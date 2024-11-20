@@ -47,7 +47,8 @@ def pagerduty_alert_trigger(
             severity=severity,
             custom_details=alert_details,
         )
-        return response.get("dedup_key")
+        logger.info("PagerDuty response: %s", response)
+        return response.get("dedup_key", None)
     except Exception as e:
         logger.exception("Failed to trigger PagerDuty alert:", exc_info=e)
         return None

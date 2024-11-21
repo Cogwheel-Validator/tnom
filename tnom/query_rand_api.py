@@ -1,3 +1,4 @@
+"""A function to collect data from a randomly chosen healthy API."""
 from __future__ import annotations
 
 import logging
@@ -12,7 +13,17 @@ ONE_NIBIRU = 1000000
 ZERO_POINT_ONE_NIBIRU = 100000
 async def collect_data_from_random_healthy_api(
     healthy_apis: list[str],
-    config_yml: dict[str, Any]):
+    config_yml: dict[str, Any]) -> dict[str, Any]:
+    """Collects data from a randomly chosen healthy API.
+
+    Args:
+        healthy_apis (list[str]): A list of healthy APIs.
+        config_yml (dict[str, Any]): The loaded configuration from the YAML file.
+
+    Returns:
+        dict[str, Any]: A dictionary containing all the collected data.
+
+    """
     async with aiohttp.ClientSession() as session:
         # select API
         random_healthy_api : str = (random.choice(healthy_apis)).get("api")  # noqa: S311
@@ -65,10 +76,7 @@ async def collect_data_from_random_healthy_api(
             critical_level_reached : bool = True
         all_data_from_api : dict[str, Any] = {
             "miss_counter": miss_counter,
-            "check_for_aggregate_prevotes_result": check_for_aggregate_prevotes_result,
             "check_for_aggregate_votes": check_for_aggregate_votes,
-            "collect_slash_window": collect_slash_window,
-            "current_block_height": current_block_height,
             "current_epoch": current_epoch,
             "wallet_balance": wallet_balance,
             "wallet_balance_healthy": wallet_balance_healthy,

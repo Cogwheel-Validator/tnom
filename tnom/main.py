@@ -2,6 +2,7 @@ from pathlib import Path
 import argparse
 from set_up_db import init_and_check_db
 import config_load
+import query_rand_api
 from check_apis import check_apis
 async def main():
     # Define args
@@ -53,4 +54,14 @@ async def main():
     healthy_apis = await check_apis(config_yml)
 
     # Step four - Make query with random healthy API
-    
+    query_resaults = await query_rand_api.collect_data_from_random_healthy_api(
+        healthy_apis, config_yml)
+    # Extract data here
+    miss_counter = query_resaults["miss_counter"]
+    check_for_aggregate_votes = query_resaults["check_for_aggregate_votes"]
+    current_epoch = query_resaults["current_epoch"]
+    wallet_balance = query_resaults["wallet_balance"]
+    wallet_balance_healthy = query_resaults["wallet_balance_healthy"]
+    critical_level_reached = query_resaults["critical_level_reached"]
+
+    # Step five - Write data to database

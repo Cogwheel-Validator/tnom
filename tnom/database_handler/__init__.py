@@ -5,6 +5,7 @@ The database_handler package provides functions for interacting with the databas
 from .db_manager import (
     check_database_exists,
     check_if_database_directory_exists,
+    check_if_epoch_is_recorded,
     create_database,
     create_database_directory,
     overwrite_single_field,
@@ -15,6 +16,7 @@ from .db_manager import (
 __all__ = [
     "check_database_exists",
     "check_if_database_directory_exists",
+    "check_if_epoch_is_recorded",
     "create_database",
     "create_database_directory",
     "overwrite_single_field",

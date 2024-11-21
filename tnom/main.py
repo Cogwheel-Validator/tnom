@@ -1,14 +1,19 @@
-from pathlib import Path
 import argparse
-from set_up_db import init_and_check_db
+from pathlib import Path
+
 import config_load
+import database_handler
 import query_rand_api
 from check_apis import check_apis
+from set_up_db import init_and_check_db
+
+
 async def main():
     # Define args
     working_dir: Path = Path.cwd()
     config_path: Path = working_dir / "config.yml"
     alert_path: Path = working_dir / "alert.yml"
+    database_path: Path = working_dir / "chain_database"
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--working_dir",
@@ -57,11 +62,18 @@ async def main():
     query_resaults = await query_rand_api.collect_data_from_random_healthy_api(
         healthy_apis, config_yml)
     # Extract data here
-    miss_counter = query_resaults["miss_counter"]
-    check_for_aggregate_votes = query_resaults["check_for_aggregate_votes"]
-    current_epoch = query_resaults["current_epoch"]
-    wallet_balance = query_resaults["wallet_balance"]
-    wallet_balance_healthy = query_resaults["wallet_balance_healthy"]
-    critical_level_reached = query_resaults["critical_level_reached"]
-
+    query_data : dict = {
+        "miss_counter" : query_resaults["miss_counter"],
+        "check_for_aggregate_votes" : query_resaults["check_for_aggregate_votes"],
+        "current_epoch" : query_resaults["current_epoch"],
+        "wallet_balance" : query_resaults["wallet_balance"],
+        "wallet_balance_healthy" : query_resaults["wallet_balance_healthy"],
+        "critical_level_reached" : query_resaults["critical_level_reached"],
+        }
     # Step five - Write data to database
+    # Step 5.1 - Check if the current_epoch exists in the database
+    if database_handler.check_if_epoch_is_recorded(
+        database_path, query_data["current_epoch"]):
+        # Step 5.2 - Update the miss_counter, check_for_aggregate_votes, wallet_balance, 
+        # wallet_balance_healthy, critical_level_reached
+        database_handler.write_epoch_data(current_epoch, miss_counter, check_for_aggregate_votes, wallet_balance, wallet_balance_healthy, critical_level_reached)

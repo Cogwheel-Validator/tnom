@@ -61,6 +61,25 @@ def create_database_directory() -> None:
     """Create the database directory."""
     Path("chain_database").mkdir(parents=True, exist_ok=True)
 
+def check_if_epoch_is_recorded(path: Path, epoch: int) -> bool:
+    """Check if data exists for the given epoch.
+
+    Args:
+        path (Path): The path to the database file.
+        epoch (int): The epoch to check.
+
+    Returns:
+        bool: True if epoch data exists, False otherwise.
+
+    """
+    try:
+        with sqlite3.connect(path) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM nom WHERE slash_epoch = ?", (epoch,))
+            return cur.fetchone() is not None
+    except sqlite3.Error:
+        return False
+
 def read_current_epoch_data(path: Path, epoch: int) -> dict[str, int]:
     """Read the current epoch data from the database.
 
@@ -92,8 +111,10 @@ def read_current_epoch_data(path: Path, epoch: int) -> dict[str, int]:
                 "very_small_balance_alert_executed"],
         }
 
-def write_epoch_data(path: Path, data: dict[int]) -> None:
-    """Write the current epoch data to the database.
+def write_epoch_data(path: Path, data: dict[str, int]) -> None:
+    """Write or update the current epoch data to the database.
+
+    If the epoch already exists, it will update all fields with new values.
 
     Args:
         path (Path): The path to the database file.
@@ -127,19 +148,38 @@ def write_epoch_data(path: Path, data: dict[int]) -> None:
 
     with sqlite3.connect(path) as conn:
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO nom VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                data["slash_epoch"],
+        # Try to insert first
+        try:
+            cur.execute(
+                "INSERT INTO tnom VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    data["slash_epoch"],
+                    data["miss_counter_events"],
+                    data["unsigned_oracle_events"],
+                    data["price_feed_addr_balance"],
+                    data["small_balance_alert_executed"],
+                    data["very_small_balance_alert_executed"],
+                ),
+            )
+        except sqlite3.IntegrityError:
+            # If insert fails due to existing epoch, update all fields
+            cur.execute("""
+                UPDATE tnom
+                SET miss_counter_events = ?,
+                    unsigned_oracle_events = ?,
+                    price_feed_addr_balance = ?,
+                    small_balance_alert_executed = ?,
+                    very_small_balance_alert_executed = ?
+                WHERE slash_epoch = ?
+            """, (
                 data["miss_counter_events"],
                 data["unsigned_oracle_events"],
                 data["price_feed_addr_balance"],
                 data["small_balance_alert_executed"],
                 data["very_small_balance_alert_executed"],
-            ),
-        )
+                data["slash_epoch"],
+            ))
         conn.commit()
-        conn.close()
 
 def overwrite_single_field(path: Path, epoch: int, field: str, value: int) -> None:
     """Overwrites a single field in the database.

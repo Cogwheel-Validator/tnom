@@ -145,11 +145,12 @@ async def check_aggregate_pre_vote(
                 )
         logger.error("Failed to collect aggregate prevote")
         return None
+
 async def check_aggregate_vote(
     session: aiohttp.ClientSession,
     api: str,
     validator_address: str,
-) -> str | None | AggregateVoteError:
+) -> bool | None:
     """Check the aggregate vote of a validator.
 
     Args:
@@ -158,34 +159,41 @@ async def check_aggregate_vote(
         validator_address (str): The address of the validator to query.
 
     Returns:
-        str | None | AggregateVoteError:
-        An AggregateVote object if successful, otherwise a string indicating the error.
+        bool | None: True if successful, False if there is a problem, otherwise None.
 
     """
     async with session.get(
-    # Miss type on the API URL here make sure it is "valdiators" instead of "validators"
-    # Probably a miss type when API route was made
-        f"{api}/nibiru/oracle/v1beta1/valdiators/{validator_address}/aggregate_vote",
+        f"{api}/nibiru/oracle/v1beta1/validators/{validator_address}/aggregate_vote",
         timeout=aiohttp.ClientTimeout(total=5),
     ) as response:
         voting_targets = await collect_vote_targets(session, api)
         if response.status == HTTPStatus.OK:
             data = await response.json(content_type="application/json")
-            if data["code"] == CODE_ERROR:
-                raise AggregateVoteError(data["message"], data["code"])
+            if data.get("code") == CODE_ERROR:
+                logging.error(
+                    "AggregateVoteError: %s",
+                    AggregateVoteError(data["message"], data["code"]),
+                )
+                # if False that means there is a problem
+                return False
             if "aggregate_vote" in data:
                 exchange_rates = data["aggregate_vote"].get("exchange_rate_tuples", [])
                 for exchange_rate in exchange_rates:
                     pair = exchange_rate.get("pair")
-                    logging.debug(pair)
-                    if pair is not None and pair not in voting_targets:
-                        raise AggregateVoteError(
-                            message=f"{pair} not in voting targets", code=CODE_ERROR,
+                    logging.debug("Pair: %s", pair)
+                    if pair and pair not in voting_targets:
+                        logging.error(
+                            "AggregateVoteError: %s",
+                            AggregateVoteError(
+                                message=f"{pair} not in voting targets",
+                                code=CODE_ERROR,
+                            ),
                         )
-                # If we reach this point, all pairs are present, so return "OK"
-                return "OK"
-            logging.error("Failed to collect aggregate vote")
-            return None
+                        # if False that means there is a problem
+                        return False
+                logging.info("Collecting aggregate vote")
+                # if there is no problem then it should be true at this point
+                return True
         logging.error("Failed to collect aggregate vote")
         return None
 

@@ -7,6 +7,8 @@ import query_rand_api
 from check_apis import check_apis
 from set_up_db import init_and_check_db
 
+ONE_NIBIRU = 1000000
+ZERO_PT_ONE = 100000
 
 async def main():
     # Define args
@@ -67,13 +69,69 @@ async def main():
         "check_for_aggregate_votes" : query_resaults["check_for_aggregate_votes"],
         "current_epoch" : query_resaults["current_epoch"],
         "wallet_balance" : query_resaults["wallet_balance"],
-        "wallet_balance_healthy" : query_resaults["wallet_balance_healthy"],
-        "critical_level_reached" : query_resaults["critical_level_reached"],
         }
     # Step five - Write data to database
     # Step 5.1 - Check if the current_epoch exists in the database
     if database_handler.check_if_epoch_is_recorded(
         database_path, query_data["current_epoch"]):
-        # Step 5.2 - Update the miss_counter, check_for_aggregate_votes, wallet_balance, 
-        # wallet_balance_healthy, critical_level_reached
-        database_handler.write_epoch_data(current_epoch, miss_counter, check_for_aggregate_votes, wallet_balance, wallet_balance_healthy, critical_level_reached)
+        # Step 5.2a - Update tthe existing db with data
+
+        # read current epoch data
+        read_crw_data: dict = database_handler.read_current_epoch_data(
+            database_path, query_data["current_epoch"])
+        db_unsigned_or_ev: int = read_crw_data["unsigned_oracle_events"]
+        db_small_bal_alert: int = read_crw_data["small_balance_alert_executed"]
+        db_very_small_bal_alert: int = read_crw_data["very_small_balance_alert_executed"]
+        # if the check failed the return should be false adding +1 to not signing events
+        if query_data["check_for_aggregate_votes"] is False:
+            db_unsigned_or_ev += 1
+        # swiched this part from the query rand api script
+        # if less than 1 change value to 1 return to 0 if the balance has changed
+        # TO DO allow in the future for user to input their own critical values instead
+        # just using 1 or 0.1 NIBI
+        if query_data["wallet_balance"] < ONE_NIBIRU and db_small_bal_alert == 0:
+            db_small_bal_alert += 1
+        if query_data["wallet_balance"] < ZERO_PT_ONE and db_very_small_bal_alert == 0:
+            db_very_small_bal_alert += 1
+        if query_data["wallet_balance"] >= ONE_NIBIRU:
+            db_small_bal_alert = 0
+        if query_data["wallet_balance"] >= ZERO_PT_ONE:
+            db_very_small_bal_alert = 0
+        insert_data: dict[int] = {
+            "slash_epoch": query_data["current_epoch"],
+            "miss_counter_events": query_data["miss_counter"],
+            "unsigned_oracle_events": db_unsigned_or_ev,
+            "price_feed_addr_balance": query_data["wallet_balance"],
+            "small_balance_alert_executed": db_small_bal_alert,
+            "very_small_balance_alert_executed": db_very_small_bal_alert,
+        }
+        database_handler.write_epoch_data(database_path, insert_data)
+    elif database_handler.check_if_epoch_is_recorded(
+        database_path, query_data["current_epoch"]) is False:
+        # Step 5.2b if no db, no current epoch entered or just starting for first time
+        # make the new entry in the db
+
+        # check if there is a previous entry
+        if database_handler.check_if_epoch_is_recorded(
+        database_path, query_data["current_epoch"] - 1):
+            read_prev_crw_data : dict = database_handler.read_current_epoch_data(
+                database_path, query_data["current_epoch"] - 1)
+            if read_prev_crw_data["slash_epoch"] == query_data["current_epoch"] - 1:
+                prev_small_bal_alert: int = read_prev_crw_data[
+                    "small_balance_alert_executed"]
+                prev_very_small_bal_alert: int = read_prev_crw_data[
+                    "very_small_balance_alert_executed"]
+        elif database_handler.check_if_epoch_is_recorded(
+        database_path, query_data["current_epoch"] - 1) is False:
+            prev_small_bal_alert = 0
+            prev_very_small_bal_alert = 0
+        insert_data: dict[int] = {
+            "slash_epoch": query_data["current_epoch"],
+            "miss_counter_events": query_data["miss_counter"],
+            "unsigned_oracle_events": 0,
+            "price_feed_addr_balance": query_data["wallet_balance"],
+            "small_balance_alert_executed": prev_small_bal_alert,
+            "very_small_balance_alert_executed": prev_very_small_bal_alert,
+        }
+        # TO do maybe make alerting system to handle alerts?
+        database_handler.write_epoch_data(database_path, insert_data)

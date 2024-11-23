@@ -9,8 +9,7 @@ import aiohttp
 import query
 import utility
 
-ONE_NIBIRU = 1000000
-ZERO_POINT_ONE_NIBIRU = 100000
+
 async def collect_data_from_random_healthy_api(
     healthy_apis: list[str],
     config_yml: dict[str, Any]) -> dict[str, Any]:
@@ -65,22 +64,11 @@ async def collect_data_from_random_healthy_api(
         )
         wallet_balance : int = await query.check_token_in_wallet(
             session, random_healthy_api, config_yml["price_feeder_address"])
-        if wallet_balance > ONE_NIBIRU:
-            wallet_balance_healthy : bool = True
-            critical_level_reached : bool = False
-        elif wallet_balance <= ONE_NIBIRU and wallet_balance > ZERO_POINT_ONE_NIBIRU:
-            wallet_balance_healthy : bool = False
-            critical_level_reached : bool = False
-        elif wallet_balance <= ZERO_POINT_ONE_NIBIRU:
-            wallet_balance_healthy : bool = False
-            critical_level_reached : bool = True
         all_data_from_api : dict[str, Any] = {
             "miss_counter": miss_counter,
             "check_for_aggregate_votes": check_for_aggregate_votes,
             "current_epoch": current_epoch,
             "wallet_balance": wallet_balance,
-            "wallet_balance_healthy": wallet_balance_healthy,
-            "critical_level_reached": critical_level_reached,
         }
         return all_data_from_api
 

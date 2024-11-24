@@ -7,13 +7,156 @@ from typing import Any
 import alerts
 import config_load
 import database_handler
-import query_rand_api
 import dead_man_switch
+import query_rand_api
 from check_apis import check_apis
 from set_up_db import init_and_check_db
 
 ONE_NIBI = 1000000
 ZERO_PT_ONE = 100000
+CONSECUTIVE_MISSES_THRESHOLD = 3
+TOTAL_MISSES_THRESHOLD = 5
+CRITICAL_MISSES_THRESHOLD = 10
+
+class MonitoringSystem:
+    def __init__(self, config_yml: dict, alert_yml: dict, database_path: Path):
+        self.config_yml = config_yml
+        self.alert_yml = alert_yml
+        self.database_path = database_path
+        self.consecutive_misses = 0
+        self.last_alert_epoch = None
+        self.alert_sent = {
+            "consecutive": False,
+            "total": False,
+            "critical": False,
+        }
+
+    def reset_for_new_epoch(self):
+        """Reset monitoring state for new epoch."""
+        self.consecutive_misses = 0
+        self.alert_sent = {
+            "consecutive": False,
+            "total": False,
+            "critical": False,
+        }
+
+    async def process_balance_alerts(self, query_data: dict, current_data: dict):
+        """Handle wallet balance alerts."""
+        db_small_bal_alert = current_data["small_balance_alert_executed"]
+        db_very_small_bal_alert = current_data["very_small_balance_alert_executed"]
+
+        # Check for low balance conditions
+        if query_data["wallet_balance"] < ONE_NIBI and db_small_bal_alert == 0:
+            await self._trigger_balance_alert(
+                query_data, "high", "Price feeder wallet balance has less than 1 NIBI!",
+                "small_balance_alert_executed", 1,
+            )
+
+        if query_data["wallet_balance"] < ZERO_PT_ONE and db_very_small_bal_alert == 0:
+            await self._trigger_balance_alert(
+                query_data, "critical", "Price feeder wallet balance has less than 0.1 NIBI!",
+                "very_small_balance_alert_executed", 1,
+            )
+
+        # Check for balance recovery conditions
+        if query_data["wallet_balance"] >= ONE_NIBI and db_small_bal_alert != 0:
+            await self._trigger_balance_alert(
+                query_data, "info", "Price feeder wallet balance has more than 1 NIBI!",
+                "small_balance_alert_executed", 0,
+            )
+
+        if query_data["wallet_balance"] >= ZERO_PT_ONE and db_very_small_bal_alert != 0:
+            await self._trigger_balance_alert(
+                query_data, "info", "Price feeder wallet balance has more than 0.1 NIBI!",
+                "very_small_balance_alert_executed", 0,
+            )
+
+    async def _trigger_balance_alert(self, query_data: dict, level: str,
+                                     summary: str, field: str, new_value: int):
+        """Helper method to trigger balance alerts."""
+        alert_details = {
+            "wallet_balance": (str(query_data["wallet_balance"]), "unibi"),
+            "alert_level": level,
+        }
+
+        if self.alert_yml["pagerduty_alerts"]:
+            alerts.pagerduty_alert_trigger(
+                self.alert_yml["routing_key"], alert_details, summary, level
+            )
+        if self.alert_yml["telegram_alerts"]:
+            alerts.telegram_alert_trigger(
+                self.alert_yml["telegram_bot_token"], alert_details,
+                self.alert_yml["telegram_chat_id"]
+            )
+
+        database_handler.overwrite_single_field(
+            self.database_path, query_data["current_epoch"], field, new_value
+        )
+
+    async def process_signing_alerts(self, epoch: int, query_data: dict, total_misses: int):
+        """Handle signing event alerts."""
+        if self.last_alert_epoch != epoch:
+            self.reset_for_new_epoch()
+            self.last_alert_epoch = epoch
+
+        if not query_data["check_for_aggregate_votes"]:
+            self.consecutive_misses += 1
+        else:
+            self.consecutive_misses = 0
+
+        alerts_to_send = []
+
+        # Check consecutive misses
+        if self.consecutive_misses >= CONSECUTIVE_MISSES_THRESHOLD and not self.alert_sent["consecutive"]:
+            alerts_to_send.append({
+                "details": {
+                    "consecutive_misses": self.consecutive_misses,
+                    "alert_level": "high"
+                },
+                "summary": f"Alert: {self.consecutive_misses} consecutive unsigned events detected!",
+                "severity": "high",
+            })
+            self.alert_sent["consecutive"] = True
+
+        # Check total misses
+        if total_misses >= TOTAL_MISSES_THRESHOLD and not self.alert_sent["total"]:
+            alerts_to_send.append({
+                "details": {
+                    "total_misses": total_misses,
+                    "alert_level": "high",
+                },
+                "summary": f"Alert: Total unsigned events ({total_misses}) exceeded threshold!",
+                "severity": "high",
+            })
+            self.alert_sent["total"] = True
+
+        # Check critical threshold
+        if total_misses >= CRITICAL_MISSES_THRESHOLD and not self.alert_sent["critical"]:
+            alerts_to_send.append({
+                "details": {
+                    "total_misses": total_misses,
+                    "alert_level": "critical"
+                },
+                "summary": f"CRITICAL: Unsigned events ({total_misses}) at critical level!",
+                "severity": "critical"
+            })
+            self.alert_sent["critical"] = True
+
+        # Send all accumulated alerts
+        for alert in alerts_to_send:
+            if self.alert_yml["pagerduty_alerts"]:
+                alerts.pagerduty_alert_trigger(
+                    self.alert_yml["routing_key"],
+                    alert["details"],
+                    alert["summary"],
+                    alert["severity"],
+                )
+            if self.alert_yml["telegram_alerts"]:
+                alerts.telegram_alert_trigger(
+                    self.alert_yml["telegram_bot_token"],
+                    alert["details"],
+                    self.alert_yml["telegram_chat_id"],
+                )
 
 async def main():
     # Define args

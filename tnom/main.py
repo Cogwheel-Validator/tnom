@@ -1,9 +1,11 @@
 import argparse
 from pathlib import Path
+from typing import Any
 
 import config_load
 import database_handler
 import query_rand_api
+import alerts
 from check_apis import check_apis
 from set_up_db import init_and_check_db
 
@@ -89,14 +91,16 @@ async def main():
         # if less than 1 change value to 1 return to 0 if the balance has changed
         # TO DO allow in the future for user to input their own critical values instead
         # just using 1 or 0.1 NIBI
-        if query_data["wallet_balance"] < ONE_NIBIRU and db_small_bal_alert == 0:
-            db_small_bal_alert += 1
-        if query_data["wallet_balance"] < ZERO_PT_ONE and db_very_small_bal_alert == 0:
-            db_very_small_bal_alert += 1
-        if query_data["wallet_balance"] >= ONE_NIBIRU:
-            db_small_bal_alert = 0
-        if query_data["wallet_balance"] >= ZERO_PT_ONE:
-            db_very_small_bal_alert = 0
+        # move this part to the alert trigger
+        # comment it out for now
+        #if query_data["wallet_balance"] < ONE_NIBIRU and db_small_bal_alert == 0:
+        #    db_small_bal_alert += 1
+        #if query_data["wallet_balance"] < ZERO_PT_ONE and db_very_small_bal_alert == 0:
+        #    db_very_small_bal_alert += 1
+        #if query_data["wallet_balance"] >= ONE_NIBIRU:
+        #    db_small_bal_alert = 0
+        #if query_data["wallet_balance"] >= ZERO_PT_ONE:
+        #    db_very_small_bal_alert = 0
         insert_data: dict[int] = {
             "slash_epoch": query_data["current_epoch"],
             "miss_counter_events": query_data["miss_counter"],
@@ -135,3 +139,33 @@ async def main():
         }
         # TO do maybe make alerting system to handle alerts?
         database_handler.write_epoch_data(database_path, insert_data)
+    # Step 6 alerting system
+    # Step 6.1 check current alerts
+    read_crw_data: dict = database_handler.read_current_epoch_data(
+            database_path, query_data["current_epoch"])
+    db_small_bal_alert: int = read_crw_data["small_balance_alert_executed"]
+    db_very_small_bal_alert: int = read_crw_data["very_small_balance_alert_executed"]
+    if query_data["wallet_balance"] < ONE_NIBIRU and db_small_bal_alert == 0:
+        db_small_bal_alert += 1
+    if query_data["wallet_balance"] < ZERO_PT_ONE and db_very_small_bal_alert == 0:
+        db_very_small_bal_alert += 1
+    if query_data["wallet_balance"] >= ONE_NIBIRU:
+        db_small_bal_alert = 0
+    if query_data["wallet_balance"] >= ZERO_PT_ONE:
+        db_very_small_bal_alert = 0
+
+    # Step 6.2 trigger alerts
+    # alert is balance has less then 1 NIBI
+    if query_data["wallet_balance"] < ONE_NIBIRU and db_small_bal_alert == 0:
+        db_small_bal_alert += 1
+        alert_yml = config_load.load_alert_yml(args.alert_path)
+        database_handler.overwrite_single_field(
+            database_path, query_data["current_epoch"],
+            "small_balance_alert_executed", db_small_bal_alert)
+        alert_details: dict[str, Any] = {
+            "wallet_balance": (str(query_data["wallet_balance"]),"unibi"),
+            "alert_level": "high",
+        }
+        summary: str = "Price feeder wallet balance has less than 1 NIBI!"
+        severity: str = "high"
+        alerts.pagerduty_alert_trigger(alert_yml["routing_key"],alert_details,summary,severity)

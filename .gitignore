@@ -4,3 +4,6 @@
 **/.ruff_cache
 config.yaml
 alert.yaml
+build
+dist
+tnom.spec

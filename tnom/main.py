@@ -189,54 +189,94 @@ class MonitoringSystem:
                     self.alert_yml["telegram_chat_id"],
                 )
 
-async def main() -> None:
-    # Define args
-    working_dir: Path = Path.cwd()
-    config_path: Path = working_dir / "config.yml"
-    alert_path: Path = working_dir / "alert.yml"
-    database_path: Path = working_dir / "chain_database"
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--working_dir",
-        type=str,
-        help="""The working directory where the config and alert YAML
-        files are located and where the database is initialized and checked.
+def setup_argument_parser() -> argparse.ArgumentParser:
+    """Set up and return the argument parser with all arguments configured."""
+    parser = argparse.ArgumentParser(
+        description="Monitoring system for price feeds and wallet balances",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
 
-        Example: --working_dir /home/user/tnom""",
+    # Get default working directory
+    working_dir = Path.cwd()
+
+    parser.add_argument(
+        "--working-dir",  # Changed from working_dir to working-dir for consistency
+        type=str,
+        help="The working directory for config files and database\n"
+             "Default: current working directory",
         default=working_dir,
         required=False,
     )
-    parser.add_argument(
-        "--config_path",
-        type=str,
-        help="""The path to the config YAML file
 
-        Example: --config_path /home/user/tnom/config.yml""",
-        default=config_path,
+    parser.add_argument(
+        "--config-path",
+        type=str,
+        help="Path to the config YAML file\n"
+             f"Default: {working_dir}/config.yml",
+        default=working_dir / "config.yml",
         required=False,
     )
-    parser.add_argument(
-        "--alert_path",
-        type=str,
-        help="""The path to the alert YAML file
 
-        Example: --alert_path /home/user/tnom/alert.yml""",
+    parser.add_argument(
+        "--alert-path",
+        type=str,
+        help="Path to the alert YAML file\n"
+             f"Default: {working_dir}/alert.yml",
+        default=working_dir / "alert.yml",
         required=False,
-        default=alert_path,
     )
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="v0.3.0",
+    )
+
+    return parser
+
+async def main() -> None:
+    # Set up logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+
+    # Parse arguments
+    parser = setup_argument_parser()
     args = parser.parse_args()
-    if args.working_dir:
-        working_dir = Path(args.working_dir)
 
-    # Step one - Initialize and check the database
-    init_and_check_db(working_dir)
+    # Convert string paths to Path objects
+    working_dir = Path(args.working_dir)
+    config_path = Path(args.config_path)
+    alert_path = Path(args.alert_path)
+    database_path = working_dir / "chain_database"
 
-    # Step two - Load the config and alert YAML files
-    config_yml = config_load.load_config_yml(args.config_path)
-    alert_yml = config_load.load_alert_yml(args.alert_path)
+    # Validate paths
+    if not config_path.exists():
+        logging.error("Config file not found: %s", config_path)
+        sys.exit(1)
+
+    if not alert_path.exists():
+        logging.error("Alert file not found: %s", alert_path)
+        sys.exit(1)
+
+    # Initialize and check the database
+    try:
+        init_and_check_db(working_dir)
+    except Exception as e:
+        logging.exception("Failed to initialize database: %s", e)  # noqa: TRY401
+        sys.exit(1)
+
+    #  Load the config and alert YAML files
+    try:
+        config_yml = config_load.load_config_yml(config_path)
+        alert_yml = config_load.load_alert_yml(alert_path)
+    except Exception as e:
+        logging.exception("Failed to load configuration files: %s", e)  # noqa: TRY401
+        sys.exit(1)
 
     # Verify alert configuration
-    if alert_yml["telegram_alerts"] is False and alert_yml["pagerduty_alerts"] is False:
+    if not alert_yml["telegram_alerts"] and not alert_yml["pagerduty_alerts"]:
         logging.error("No alerts are enabled! Please enable at least one alert system.")
         sys.exit(1)
 
@@ -364,3 +404,10 @@ async def main() -> None:
         logging.info("Shutting down monitoring...")
     finally:
         loop.close()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("Shutting down monitoring...")
+        sys.exit(0)

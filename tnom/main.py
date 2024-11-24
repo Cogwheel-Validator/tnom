@@ -8,10 +8,11 @@ import alerts
 import config_load
 import database_handler
 import query_rand_api
+import dead_man_switch
 from check_apis import check_apis
 from set_up_db import init_and_check_db
 
-ONE_NIBIRU = 1000000
+ONE_NIBI = 1000000
 ZERO_PT_ONE = 100000
 
 async def main():
@@ -114,7 +115,7 @@ async def main():
                 prev_very_small_bal_alert: int = read_prev_crw_data[
                     "very_small_balance_alert_executed"]
         elif database_handler.check_if_epoch_is_recorded(
-        database_path, query_data["current_epoch"] - 1) is False:
+            database_path, query_data["current_epoch"] - 1) is False:
             prev_small_bal_alert = 0
             prev_very_small_bal_alert = 0
         insert_data: dict[int] = {
@@ -128,7 +129,6 @@ async def main():
         database_handler.write_epoch_data(database_path, insert_data)
     # Step 6 alerting system
     # Step 6.1 check current alerts
-    alert_yml = config_load.load_alert_yml(args.alert_path)
     telegram_enabled : bool = alert_yml["telegram_alerts"]
     pagerduty_enabled : bool = alert_yml["pagerduty_alerts"]
     if telegram_enabled is False and pagerduty_enabled is False:
@@ -142,7 +142,7 @@ async def main():
 
     # Step 6.2 trigger alerts
     # alert is balance has less then 1 NIBI
-    if query_data["wallet_balance"] < ONE_NIBIRU and db_small_bal_alert == 0:
+    if query_data["wallet_balance"] < ONE_NIBI and db_small_bal_alert == 0:
         db_small_bal_alert += 1
         database_handler.overwrite_single_field(
             database_path, query_data["current_epoch"],
@@ -174,7 +174,7 @@ async def main():
         if telegram_enabled is True:
             alerts.telegram_alert_trigger(alert_yml["telegram_bot_token"],alert_details,alert_yml["telegram_chat_id"])
     # return alert confirmation that balance is within healthy balance
-    if query_data["wallet_balance"] >= ONE_NIBIRU and db_small_bal_alert != 0:
+    if query_data["wallet_balance"] >= ONE_NIBI and db_small_bal_alert != 0:
         db_small_bal_alert = 0
         database_handler.overwrite_single_field(
             database_path, query_data["current_epoch"],
@@ -205,3 +205,12 @@ async def main():
             alerts.pagerduty_alert_trigger(alert_yml["routing_key"],alert_details,summary,severity)
         if telegram_enabled is True:
             alerts.telegram_alert_trigger(alert_yml["telegram_bot_token"],alert_details,alert_yml["telegram_chat_id"])
+    # TO DO alerts for unasigned events
+    # add to db that alert has been sent for unasigned alerts
+    # maybe add alerts in memory if there are consecutive misses
+
+    # Step 7 run dead man switch
+    if alert_yml["health_check_enabled"] is True:
+        dead_man_switch.run_health_check(alert_yml["health_check_url"],
+                                         alert_yml["health_check_interval"],
+                                         max_iterations=None)

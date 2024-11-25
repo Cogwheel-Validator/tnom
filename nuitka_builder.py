@@ -1,38 +1,36 @@
 """Nutkia Builder script."""
+import logging
 import subprocess
+import sys
 from pathlib import Path
 
 
 def run_nuitka_build() -> None:
-    # Get the poetry virtual environment path
-    """Build the tnom executable with Nuitka.
+    """Builds the project using Nuitka.
 
-    This function builds the tnom executable by:
-    1. Getting the poetry virtual environment path
-    2. Getting the project root directory
-    3. Creating the build command for Nuitka
-    4. Running the build command
+    This function constructs a build command to compile the project
+    with Nuitka, including specific packages and plugins. It executes
+    the command using the current Python interpreter, aiming to
+    produce a standalone executable in the "build" directory.
 
-    Args:
-        None
+    The build command includes:
+        - Anti-bloat plugin
+        - Specified packages (tnom, alerts, config_load, database_handler,
+          dead_man_switch, query, utility)
+        - Inclusion of the 'tnom' data directory
 
-    Returns:
-        None
-
-    Raises:
-        subprocess.CalledProcessError: If the build command fails
-
+    If the build succeeds, a success message is logging.infoed and the
+    executable is stored in the "build" directory. If the build
+    fails, an error message is logging.infoed and the script exits with a
+    non-zero status.
     """
-    result = subprocess.run(["poetry", "env", "info", "--path"],
-                          capture_output=True, text=True, check=False)
-    venv_path = result.stdout.strip()
-
-    # Get the project root directory
     project_root = Path(__file__).parent
 
-    # Build command for Nuitka (removed numpy plugin and --follow-imports)
+    # Build command for Nuitka
     build_command = [
-        "python", "-m", "nuitka",
+        sys.executable,  # Use the current Python interpreter
+        "-m",
+        "nuitka",
         "--enable-plugin=anti-bloat",
         "--include-package=tnom",
         "--include-package=alerts",
@@ -49,7 +47,16 @@ def run_nuitka_build() -> None:
     ]
 
     # Run the build command
-    subprocess.run(build_command, check=False)
+    try:
+        subprocess.run(build_command, check=True)  # noqa: S603
+        logging.info("\nBuild completed successfully!")
+        logging.info("The executable can be found in the 'build' directory")
+    except subprocess.CalledProcessError as e:
+        logging.exception("\nBuild failed with error: %s", e)  # noqa: TRY401
+        sys.exit(1)
+    except Exception as e:
+        logging.exception("\nAn unexpected error occurred: %s", e)  # noqa: TRY401
+        sys.exit(1)
 
 if __name__ == "__main__":
     run_nuitka_build()

@@ -1,0 +1,13 @@
+# enter your own valoper address
+validator_address: "nibivaloper1s7dm9d34jehmudn8afhchzf9l46wt4nz7fauzs"
+# enter your price feed address is you use another address to sign oracle transactions,
+# otherwise use your validator address
+price_feed_addr: "nibi1s7dm9d34jehmudn8afhchzf9l46wt4nzhjn8kd"
+APIs:
+  - http://localhost:1317 # the script should be able to work with any local network port
+  - https://nibiru-api.cogwheel.zone 
+  - https://nibiru-api.polkachu.com
+  - https://rest.lavenderfive.com:443/nibiru
+  - https://nibiru.api.m.stavr.tech
+  - https://lcd-nibiru.imperator.co
+monitoring_interval: 60 # default is 60s

@@ -2,8 +2,9 @@
 **/.vscode
 **/.pytest_cache
 **/.ruff_cache
-config.yaml
-alert.yaml
+config.yml
+alert.yml
 build
 dist
 tnom.spec
+chain_database

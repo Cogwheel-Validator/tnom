@@ -46,7 +46,7 @@ def create_database(path: Path) -> None:
     """
     with sqlite3.connect(path) as conn:
         conn.execute(
-            """CREATE TABLE IF NOT EXISTS nom (
+            """CREATE TABLE IF NOT EXISTS tnom (
                 slash_epoch INTEGER PRIMARY KEY,
                 miss_counter_events INTEGER,
                 unsigned_oracle_events INTEGER,
@@ -55,7 +55,6 @@ def create_database(path: Path) -> None:
                 very_small_balance_alert_executed INTEGER
             )""",
         )
-        conn.close()
 
 def create_database_directory() -> None:
     """Create the database directory."""
@@ -75,7 +74,7 @@ def check_if_epoch_is_recorded(path: Path, epoch: int) -> bool:
     try:
         with sqlite3.connect(path) as conn:
             cur = conn.cursor()
-            cur.execute("SELECT 1 FROM nom WHERE slash_epoch = ?", (epoch,))
+            cur.execute("SELECT 1 FROM tnom WHERE slash_epoch = ?", (epoch,))
             return cur.fetchone() is not None
     except sqlite3.Error:
         return False
@@ -95,8 +94,9 @@ def read_current_epoch_data(path: Path, epoch: int) -> dict[str, int]:
 
     """
     with sqlite3.connect(path) as conn:
+        conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        cur.execute("SELECT * FROM nom WHERE slash_epoch = ?", (epoch))
+        cur.execute("SELECT * FROM tnom WHERE slash_epoch = ?", (epoch))
         data = cur.fetchone()
         if data is None:
             msg = "No data found in database"
@@ -199,8 +199,8 @@ def overwrite_single_field(path: Path, epoch: int, field: str, value: int) -> No
         sqlite3.Error: If any database operation fails.
 
     """
-    if path is None or not isinstance(path, str):
-        msg = "path must be a string"
+    if not isinstance(path, Path):
+        msg = "path must be a Path object"
         raise TypeError(msg)
     if field is None or not isinstance(field, str):
         msg = "field must be a string"
@@ -208,13 +208,14 @@ def overwrite_single_field(path: Path, epoch: int, field: str, value: int) -> No
     if value is None or not isinstance(value, int):
         msg = "value must be an integer"
         raise TypeError(msg)
-    # the allowed columns that can be edited
+
     allowed_columns = [
         "miss_counter_events",
-        "unsingned_oracle_events",
+        "unsigned_oracle_events",
         "price_feed_addr_balance",
         "small_balance_alert_executed",
-        "very_small_balance_alert_executed"]
+        "very_small_balance_alert_executed",
+    ]
 
     if field not in allowed_columns:
         msg = f"""Invalid column name: {field}.
@@ -224,10 +225,9 @@ def overwrite_single_field(path: Path, epoch: int, field: str, value: int) -> No
     try:
         with sqlite3.connect(path) as conn:
             cur = conn.cursor()
-            cur.execute("UPDATE nom SET ? = ? WHERE slash_epoch = ?", (
+            cur.execute("UPDATE tnom SET ? = ? WHERE slash_epoch = ?", (
                 field, value, epoch))
             conn.commit()
-            conn.close()
     except sqlite3.Error as e:
         msg = "Database operation failed"
         raise sqlite3.Error(msg) from e

@@ -19,7 +19,7 @@ argparse = "^1.4.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.7.4"
-pyinstaller = "^6.11.1"
+nuitka = "^2.5.3"
 
 [build-system]
 requires = ["poetry-core"]

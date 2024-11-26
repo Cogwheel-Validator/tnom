@@ -25,7 +25,8 @@ async def collect_data_from_random_healthy_api(
     """
     async with aiohttp.ClientSession() as session:
         # select API
-        random_healthy_api : str = (random.choice(healthy_apis)).get("api")  # noqa: S311
+        random_healthy_api = (random.choice(healthy_apis))  # noqa: S311
+        logging.info(random_healthy_api)
         # collect miss counter
         miss_counter : int = await query.check_miss_counters(
             session, random_healthy_api, config_yml["validator_address"])
@@ -56,14 +57,14 @@ async def collect_data_from_random_healthy_api(
             # And if it returns compleatly false
             logging.error("Aggregate vote failed")
         collect_slash_window : int = await query.collect_slash_parameters(
-            session, random_healthy_api)
+            random_healthy_api, session)
         current_block_height : int = await query.check_latest_block(
-            session, random_healthy_api)[0]
+            random_healthy_api, session)[0]
         current_epoch : int = await utility.create_epoch(
             current_block_height, collect_slash_window,
         )
         wallet_balance : int = await query.check_token_in_wallet(
-            session, random_healthy_api, config_yml["price_feeder_address"])
+            random_healthy_api, config_yml["price_feeder_address"], session)
         all_data_from_api : dict[str, Any] = {
             "miss_counter": miss_counter,
             "check_for_aggregate_votes": check_for_aggregate_votes,

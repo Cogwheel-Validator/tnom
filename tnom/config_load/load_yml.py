@@ -34,11 +34,6 @@ def load_alert_yml(yml_file: Path) -> dict[str, Any]:
     with yml_file.open() as f:
         data = yaml.safe_load(f)
 
-    # Check for the presence of at least one alert trigger
-    if not any("telegram_alert" in data, "pagerduty_alert" in data):
-        msg = "There needs to be at least one alert trigger"
-        raise ValueError(msg)
-
     # Check for the presence of required fields
     required_fields : dict[str, list[str]] = {
         "telegram_alert": ["telegram_bot_token", "chat_id"],

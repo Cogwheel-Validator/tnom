@@ -134,14 +134,14 @@ async def check_aggregate_pre_vote(
     ) as response:
         if response.status == HTTPStatus.OK:
             data = await response.json(content_type="application/json")
-            if data["code"] == CODE_ERROR:
+            if data.get("code") == CODE_ERROR:
                 logger.error(data["message"])
-                raise AggregateVoteError(data["message"], data["code"])
+                logging.error(AggregateVoteError(data["message"], data["code"]))
             if "aggregate_prevote" in data:
                 logger.info("Collecting aggregate prevote")
                 return AggregatePreVote(
-                    hash=data["aggregate_prevote"].get("hash"),
-                    submit_block=data["aggregate_prevote"].get("submit_block"),
+                    hash=data["aggregate_prevote"]["hash"],
+                    submit_block=data["aggregate_prevote"]["submit_block"],
                 )
         logger.error("Failed to collect aggregate prevote")
         return None
@@ -215,8 +215,9 @@ async def collect_slash_parameters(
         f"{api}/nibiru/oracle/v1beta1/params",
         timeout=aiohttp.ClientTimeout(total=5),
     ) as response:
+        logging.info(response.status, response.reason, response.url)
         if response.status == HTTPStatus.OK:
-            json_data = await response.json(content_type="application/json")
+            json_data = await response.json()
             logging.info("Collecting slash parameters")
             logging.debug(json_data.get("params", {}).get("slash_window"))
             return json_data.get("params", {}).get("slash_window")

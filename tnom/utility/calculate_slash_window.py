@@ -23,5 +23,9 @@ def create_epoch(current_block_height: int, slash_window: int) -> int:
     #Until there is a better solution this will have to suffice
     #It works by dividing the current block height by the slash window
     #And it return the floor of that division
-    return np.floor_divide(current_block_height, slash_window)
+    current_block_height_np = np.int64(current_block_height)
+    slash_window_np = np.int64(slash_window)
+    return int(np.floor_divide(current_block_height_np, slash_window_np))
 
+if __name__ == "__main__":
+    print(create_epoch(7199, 3600))

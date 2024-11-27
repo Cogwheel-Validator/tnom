@@ -150,7 +150,7 @@ async def check_aggregate_vote(
     session: aiohttp.ClientSession,
     api: str,
     validator_address: str,
-) -> bool | None:
+) -> bool :
     """Check the aggregate vote of a validator.
 
     Args:
@@ -159,11 +159,12 @@ async def check_aggregate_vote(
         validator_address (str): The address of the validator to query.
 
     Returns:
-        bool | None: True if successful, False if there is a problem, otherwise None.
+        bool True if successful, False if there is a problem.
 
     """
     async with session.get(
-        f"{api}/nibiru/oracle/v1beta1/validators/{validator_address}/aggregate_vote",
+        # keep validators here !
+        f"{api}/nibiru/oracle/v1beta1/valdiators/{validator_address}/aggregate_vote",
         timeout=aiohttp.ClientTimeout(total=5),
     ) as response:
         voting_targets = await collect_vote_targets(session, api)
@@ -195,7 +196,7 @@ async def check_aggregate_vote(
                 # if there is no problem then it should be true at this point
                 return True
         logging.error("Failed to collect aggregate vote")
-        return None
+        return False
 
 async def collect_slash_parameters(
     api: str,
@@ -215,9 +216,8 @@ async def collect_slash_parameters(
         f"{api}/nibiru/oracle/v1beta1/params",
         timeout=aiohttp.ClientTimeout(total=5),
     ) as response:
-        logging.info(response.status, response.reason, response.url)
         if response.status == HTTPStatus.OK:
-            json_data = await response.json()
+            json_data = await response.json(content_type="application/json")
             logging.info("Collecting slash parameters")
             logging.debug(json_data.get("params", {}).get("slash_window"))
             return json_data.get("params", {}).get("slash_window")
@@ -247,11 +247,10 @@ async def check_token_in_wallet(
     ) as response:
         if response.status == HTTPStatus.OK:
             json_data = await response.json(content_type="application/json")
-            balances = json_data.get("result", [])
-            logging.info("Collecting token balance")
+            balances = json_data.get("balances", [])
             for balance in balances:
-                if balance["denom"] == "unibi":
-                    return int(balance["amount"])
+                if balance.get("denom") == "unibi":
+                    return int(balance.get("amount"))
             logging.error("Failed to collect token balance")
             return None
         logging.error("Failed to collect token balance")
@@ -287,3 +286,4 @@ async def check_latest_block(
     except aiohttp.ContentTypeError as e:
         logging.exception("Failed to collect latest block", exc_info=e)
         return None
+

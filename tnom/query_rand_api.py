@@ -27,12 +27,17 @@ async def collect_data_from_random_healthy_api(
         # select API
         random_healthy_api = (random.choice(healthy_apis))  # noqa: S311
         logging.info(random_healthy_api)
+
         # collect miss counter
         miss_counter : int = await query.check_miss_counters(
             session, random_healthy_api, config_yml["validator_address"])
+
         # check aggr prevote resault
         check_for_aggregate_prevotes_result = await query.check_aggregate_pre_vote(
             session, random_healthy_api, config_yml["validator_address"])
+
+        # if everything is ok it should return hash and block height it was sign
+        # maybe use this in the future for some kind of statistics?
         if isinstance(check_for_aggregate_prevotes_result, query.AggregatePreVote):
             # Everything is OK, use the AggregatePreVote data
             prv_hash = check_for_aggregate_prevotes_result.hash
@@ -48,23 +53,31 @@ async def collect_data_from_random_healthy_api(
             error_message = "An error occurred while checking aggregate prevote"
             logging.error(error_message)
             # TO DO make sure to add proper error handling in this case and instructions
+
+        # collect if the data has been signed
         check_for_aggregate_votes = await query.check_aggregate_vote(
             session, random_healthy_api, config_yml["validator_address"])
+        logging.info(check_for_aggregate_votes)
         if check_for_aggregate_votes is True:
             logging.info("Aggregate vote successful")
         elif check_for_aggregate_votes is False:
             # Refine this section later on in case only some pairs are present
             # And if it returns compleatly false
             logging.error("Aggregate vote failed")
+
+        # collect parameters to create the epoch
         collect_slash_window : int = await query.collect_slash_parameters(
             random_healthy_api, session)
-        current_block_height : int = await query.check_latest_block(
-            random_healthy_api, session)[0]
-        current_epoch : int = await utility.create_epoch(
-            current_block_height, collect_slash_window,
-        )
+        latest_block_result : int = await query.check_latest_block(
+            random_healthy_api, session)
+
+        # create epoch
+        current_block_height, _ = latest_block_result
+        current_epoch : int = utility.create_epoch(
+                current_block_height, collect_slash_window)
+
         wallet_balance : int = await query.check_token_in_wallet(
-            random_healthy_api, config_yml["price_feeder_address"], session)
+            random_healthy_api, config_yml.get("price_feed_addr"), session)
         all_data_from_api : dict[str, Any] = {
             "miss_counter": miss_counter,
             "check_for_aggregate_votes": check_for_aggregate_votes,

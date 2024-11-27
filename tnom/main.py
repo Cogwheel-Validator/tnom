@@ -249,7 +249,7 @@ async def main() -> None:
     working_dir = Path(args.working_dir)
     config_path = Path(args.config_path)
     alert_path = Path(args.alert_path)
-    database_path = working_dir / "chain_database"
+    database_path = working_dir / "chain_database" / "tnom.db"
 
     # Validate paths
     if not config_path.exists():

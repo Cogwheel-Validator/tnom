@@ -74,7 +74,7 @@ def check_if_epoch_is_recorded(path: Path, epoch: int) -> bool:
     try:
         with sqlite3.connect(path) as conn:
             cur = conn.cursor()
-            cur.execute("SELECT 1 FROM tnom WHERE slash_epoch = ?", (epoch,))
+            cur.execute("SELECT 1 FROM tnom WHERE slash_epoch = ?", (epoch))
             return cur.fetchone() is not None
     except sqlite3.Error:
         return False
@@ -145,7 +145,6 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
     ):
         msg = "data must contain all required fields"
         raise ValueError(msg)
-
     with sqlite3.connect(path) as conn:
         cur = conn.cursor()
         # Try to insert first

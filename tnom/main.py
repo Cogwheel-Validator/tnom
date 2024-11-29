@@ -120,13 +120,31 @@ class MonitoringSystem:
         epoch: int,
         query_data: dict,
         total_misses: int) -> None:
-        """Handle signing event alerts."""
+        """Process the signing alerts for the given epoch and query data.
+
+        This function resets the counts and flags for the given epoch if the epoch
+        has changed, then checks the consecutive and total misses for the given
+        epoch against the thresholds. If the thresholds are exceeded, it sends
+        alerts to the configured channels.
+
+        Args:
+            epoch (int): The current epoch.
+            query_data (dict): The query data for the current epoch.
+            total_misses (int): The total number of misses for the current epoch.
+
+        """
         if self.last_alert_epoch != epoch:
             self.reset_for_new_epoch()
             self.last_alert_epoch = epoch
 
-        if not query_data["check_for_aggregate_votes"]:
-            self.consecutive_misses += 1
+        previous_data = database_handler.read_current_epoch_data(
+        self.database_path, epoch)
+
+        if previous_data is None:
+            self.consecutive_misses = (1 if not
+                                       query_data["check_for_aggregate_votes"] else 0)
+        elif not query_data["check_for_aggregate_votes"]:
+            self.consecutive_misses = previous_data.get("consecutive_misses", 0) + 1
         else:
             self.consecutive_misses = 0
 
@@ -172,6 +190,14 @@ class MonitoringSystem:
                 "severity": "critical",
             })
             self.alert_sent["critical"] = True
+
+        # Store consecutive misses count in database
+        database_handler.overwrite_single_field(
+            self.database_path,
+            epoch,
+            "consecutive_misses",
+            self.consecutive_misses,
+        )
 
         # Send all accumulated alerts
         for alert in alerts_to_send:
@@ -315,6 +341,7 @@ async def main() -> None:
                 # Check if the current_epoch exists in the database
                 if database_handler.check_if_epoch_is_recorded(
                     database_path, query_data["current_epoch"]):
+                    logging.info("Writing data in the existing epoch")
                     # Step 5.2a - Update tthe existing db with data
 
                     # read current epoch data
@@ -325,10 +352,12 @@ async def main() -> None:
                         read_crw_data["small_balance_alert_executed"])
                     db_very_small_bal_alert: int = (
                         read_crw_data["very_small_balance_alert_executed"])
+                    db_consecutive_misses: int = read_crw_data["consecutive_misses"]
                     # if the check failed the return should be false adding +1 to not
                     # signing events
                     if query_data["check_for_aggregate_votes"] is False:
                         db_unsigned_or_ev += 1
+                        logging.info(f"Incrementing unsigned events to: {db_unsigned_or_ev}")
                     insert_data: dict[int] = {
                         "slash_epoch": query_data["current_epoch"],
                         "miss_counter_events": query_data["miss_counter"],
@@ -336,10 +365,12 @@ async def main() -> None:
                         "price_feed_addr_balance": query_data["wallet_balance"],
                         "small_balance_alert_executed": db_small_bal_alert,
                         "very_small_balance_alert_executed": db_very_small_bal_alert,
+                        "consecutive_misses": db_consecutive_misses,
                     }
                     database_handler.write_epoch_data(database_path, insert_data)
                 elif database_handler.check_if_epoch_is_recorded(
                     database_path, query_data["current_epoch"]) is False:
+                    logging.info("Writing data in a new epoch")
                     # Step 5.2b if no db, no current epoch entered or just starting for
                     # first time
 
@@ -356,10 +387,13 @@ async def main() -> None:
                                 "small_balance_alert_executed"]
                             prev_very_small_bal_alert: int = read_prev_crw_data[
                                 "very_small_balance_alert_executed"]
+                            prev_consecutive_misses: int = read_prev_crw_data[
+                                "consecutive_misses"]
                     elif database_handler.check_if_epoch_is_recorded(
                         database_path, query_data["current_epoch"] - 1) is False:
                         prev_small_bal_alert = 0
                         prev_very_small_bal_alert = 0
+                        prev_consecutive_misses = 0
                     insert_data: dict[int] = {
                         "slash_epoch": query_data["current_epoch"],
                         "miss_counter_events": query_data["miss_counter"],
@@ -367,6 +401,7 @@ async def main() -> None:
                         "price_feed_addr_balance": query_data["wallet_balance"],
                         "small_balance_alert_executed": prev_small_bal_alert,
                         "very_small_balance_alert_executed": prev_very_small_bal_alert,
+                        "consecutive_misses": prev_consecutive_misses,
                     }
                     database_handler.write_epoch_data(database_path, insert_data)
                      # Process alerts

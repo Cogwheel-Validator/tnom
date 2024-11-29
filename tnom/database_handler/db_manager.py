@@ -52,7 +52,8 @@ def create_database(path: Path) -> None:
                 unsigned_oracle_events INTEGER,
                 price_feed_addr_balance INTEGER,
                 small_balance_alert_executed INTEGER,
-                very_small_balance_alert_executed INTEGER
+                very_small_balance_alert_executed INTEGER,
+                consecutive_misses INTEGER DEFAULT 0
             )""",
         )
 
@@ -74,7 +75,7 @@ def check_if_epoch_is_recorded(path: Path, epoch: int) -> bool:
     try:
         with sqlite3.connect(path) as conn:
             cur = conn.cursor()
-            cur.execute("SELECT 1 FROM tnom WHERE slash_epoch = ?", (epoch))
+            cur.execute("SELECT 1 FROM tnom WHERE slash_epoch = ?", (epoch,))
             return cur.fetchone() is not None
     except sqlite3.Error:
         return False
@@ -96,7 +97,7 @@ def read_current_epoch_data(path: Path, epoch: int) -> dict[str, int]:
     with sqlite3.connect(path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        cur.execute("SELECT * FROM tnom WHERE slash_epoch = ?", (epoch))
+        cur.execute("SELECT * FROM tnom WHERE slash_epoch = ?", (epoch,))
         data = cur.fetchone()
         if data is None:
             msg = "No data found in database"
@@ -109,6 +110,7 @@ def read_current_epoch_data(path: Path, epoch: int) -> dict[str, int]:
             "small_balance_alert_executed": data["small_balance_alert_executed"],
             "very_small_balance_alert_executed": data[
                 "very_small_balance_alert_executed"],
+            "consecutive_misses": data["consecutive_misses"],
         }
 
 def write_epoch_data(path: Path, data: dict[str, int]) -> None:
@@ -142,6 +144,7 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
         or data.get("price_feed_addr_balance") is None
         or data.get("small_balance_alert_executed") is None
         or data.get("very_small_balance_alert_executed") is None
+        or data.get("consecutive_misses") is None
     ):
         msg = "data must contain all required fields"
         raise ValueError(msg)
@@ -150,7 +153,7 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
         # Try to insert first
         try:
             cur.execute(
-                "INSERT INTO tnom VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO tnom VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     data["slash_epoch"],
                     data["miss_counter_events"],
@@ -158,8 +161,10 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
                     data["price_feed_addr_balance"],
                     data["small_balance_alert_executed"],
                     data["very_small_balance_alert_executed"],
+                    data["consecutive_misses"],
                 ),
             )
+
         except sqlite3.IntegrityError:
             # If insert fails due to existing epoch, update all fields
             cur.execute("""
@@ -168,7 +173,8 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
                     unsigned_oracle_events = ?,
                     price_feed_addr_balance = ?,
                     small_balance_alert_executed = ?,
-                    very_small_balance_alert_executed = ?
+                    very_small_balance_alert_executed = ?,
+                    consecutive_misses = ?
                 WHERE slash_epoch = ?
             """, (
                 data["miss_counter_events"],
@@ -176,6 +182,7 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
                 data["price_feed_addr_balance"],
                 data["small_balance_alert_executed"],
                 data["very_small_balance_alert_executed"],
+                data["consecutive_misses"],
                 data["slash_epoch"],
             ))
         conn.commit()
@@ -214,6 +221,7 @@ def overwrite_single_field(path: Path, epoch: int, field: str, value: int) -> No
         "price_feed_addr_balance",
         "small_balance_alert_executed",
         "very_small_balance_alert_executed",
+        "consecutive_misses",
     ]
 
     if field not in allowed_columns:
@@ -224,8 +232,9 @@ def overwrite_single_field(path: Path, epoch: int, field: str, value: int) -> No
     try:
         with sqlite3.connect(path) as conn:
             cur = conn.cursor()
-            cur.execute("UPDATE tnom SET ? = ? WHERE slash_epoch = ?", (
-                field, value, epoch))
+            query = f"UPDATE tnom SET {field} = ? WHERE slash_epoch = ?" # TO DO
+            # fix this error although it should still be proteced by allowed columns
+            cur.execute(query, (value, epoch))
             conn.commit()
     except sqlite3.Error as e:
         msg = "Database operation failed"

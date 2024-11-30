@@ -103,7 +103,7 @@ class MonitoringSystem:
 
         if self.alert_yml["pagerduty_alerts"]:
             alerts.pagerduty_alert_trigger(
-                self.alert_yml["routing_key"], alert_details, summary, level,
+                self.alert_yml["pagerduty_routing_key"], alert_details, summary, level,
             )
         if self.alert_yml["telegram_alerts"]:
             alerts.telegram_alert_trigger(
@@ -203,7 +203,7 @@ class MonitoringSystem:
         for alert in alerts_to_send:
             if self.alert_yml["pagerduty_alerts"]:
                 alerts.pagerduty_alert_trigger(
-                    self.alert_yml["routing_key"],
+                    self.alert_yml["pagerduty_routing_key"],
                     alert["details"],
                     alert["summary"],
                     alert["severity"],

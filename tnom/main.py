@@ -101,11 +101,11 @@ class MonitoringSystem:
             "alert_level": level,
         }
 
-        if self.alert_yml["pagerduty_alerts"]:
+        if self.alert_yml.get("pagerduty_alerts") is True:
             alerts.pagerduty_alert_trigger(
                 self.alert_yml["pagerduty_routing_key"], alert_details, summary, level,
             )
-        if self.alert_yml["telegram_alerts"]:
+        if self.alert_yml.get("telegram_alerts") is True:
             alerts.telegram_alert_trigger(
                 self.alert_yml["telegram_bot_token"], alert_details,
                 self.alert_yml["telegram_chat_id"],

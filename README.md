@@ -24,6 +24,7 @@ the compiled version.
 - Poetry (optional)
 - All ot the requirements in the requirements.txt file
 - patchelf # only if you plan to compile the code
+- clang # only if you plan to compile the code
 
 The script was made using Python 3.11 it should work with any version >= 3.11, but it
 has only been tested with 3.11. 
@@ -37,21 +38,23 @@ If you want to use Python Poetry, you can install it using the following command
 curl -sSL https://install.python-poetry.org | python3 -
 ```
 
-If you plan to compile the code you will need to install patchelf. To install it you
-can use the following command:
+If you plan to compile the code you will need to install patchelf, clang and some
+essential tools. To install it you can use the following command:
 
 For Debian based systems (Debian, Ubuntu, etc.):
 ```bash
 sudo apt-get update -y \
-sudo apt-get install build-essential \
-sudo apt-get install patchelf
+sudo apt-get install build-essential -y \
+sudo apt-get install clang -y \
+sudo apt-get install patchelf -y
 ```
 
 For RHEL based systems (Fedora, Rocky Linux, etc.):
 ```bash
 sudo dnf update -y \ 
-sudo dnf groupinstall "Development Tools" \
-sudo dnf install patchelf
+sudo dnf groupinstall "Development Tools" -y \
+sudo dnf install clang -y \
+sudo dnf install patchelf -y
 ```
 
 ## Option 1 - Running the script directly

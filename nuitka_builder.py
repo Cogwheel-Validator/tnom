@@ -1,5 +1,6 @@
 """Nutkia Builder script."""
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +33,9 @@ def run_nuitka_build() -> None:
         "-m",
         "nuitka",
         "--enable-plugin=anti-bloat",
+        f"--jobs={os.cpu_count()}",
+        "--clang",
+        "--remove-output",
         "--include-package=tnom",
         "--include-package=alerts",
         "--include-package=config_load",

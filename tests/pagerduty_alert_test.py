@@ -2,7 +2,8 @@ import unittest
 from unittest.mock import patch
 
 import yaml
-from alerts import pagerduty_alert_trigger
+
+from tnom.alerts import pagerduty_alert_trigger
 
 
 class TestPagerDutyAlertTrigger(unittest.TestCase):

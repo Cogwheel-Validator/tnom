@@ -20,6 +20,7 @@ argparse = "^1.4.0"
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.7.4"
 nuitka = "^2.5.3"
+pytest = "^8.3.3"
 
 [build-system]
 requires = ["poetry-core"]

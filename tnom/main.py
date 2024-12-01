@@ -15,8 +15,8 @@ from set_up_db import init_and_check_db
 ONE_NIBI = 1000000
 ZERO_PT_ONE = 100000
 CONSECUTIVE_MISSES_THRESHOLD = 3
-TOTAL_MISSES_THRESHOLD = 5
-CRITICAL_MISSES_THRESHOLD = 10
+TOTAL_MISSES_THRESHOLD = 10
+CRITICAL_MISSES_THRESHOLD = 20
 
 class MonitoringSystem:
     def __init__(self, config_yml: dict, alert_yml: dict, database_path: Path) -> None:

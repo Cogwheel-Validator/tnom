@@ -78,7 +78,7 @@ class MonitoringSystem:
         ]
 
         for field, threshold, level in thresholds:
-            if (current_data["miss_counter_events"] > threshold and
+            if (int(current_data["miss_counter_events"]) > threshold and
                 current_data[field] == 0):
                 await self._trigger_miss_parameter_alert(
                     query_data, current_data, level,
@@ -332,7 +332,7 @@ async def main() -> None:
     # Set up logging
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s"
+        format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
     # Parse arguments
@@ -497,35 +497,63 @@ async def main() -> None:
 
                 # Sleep for interval
                 await asyncio.sleep(config_yml.get("monitoring_interval", 60))
-
-            except Exception as e:  # noqa: PERF203
+            except asyncio.CancelledError: # noqa: PERF203
+                logging.info("Monitoring loop cancelled.")
+                raise
+            except Exception as e:
                 logging.exception("Error in monitoring loop: %s", e)  # noqa: TRY401
                 await asyncio.sleep(10)
                 # To do reaserch RuffPERF203
-# Run monitoring and health check concurrently
+
+    async def health_check_task() -> None:
+        """Runs the health check task asynchronously.
+
+        This task executes the `run_health_check` function in a separate thread
+        if health checks are enabled in the alert configuration. It monitors the
+        health of a service by periodically triggering a dead man switch.
+
+        Raises:
+            asyncio.CancelledError: If the task is cancelled during execution.
+
+        """
+        try:
+            await asyncio.to_thread(
+                dead_man_switch.run_health_check,
+                alert_yml["health_check_url"],
+                alert_yml["health_check_interval"],
+                None,
+            ) if alert_yml["health_check_enabled"] else None
+        except asyncio.CancelledError:
+            logging.info("Health check task cancelled.")
+            raise
+
+    # Run monitoring and health check concurrently
     tasks = [
         monitoring_loop(),
-        asyncio.to_thread(
-            dead_man_switch.run_health_check,
-            alert_yml["health_check_url"],
-            alert_yml["health_check_interval"],
-            None,
-        ) if alert_yml["health_check_enabled"] else None,
     ]
 
-    # Filter out None tasks and run
-    tasks = [t for t in tasks if t is not None]
+    if alert_yml["health_check_enabled"]:
+        tasks.append(health_check_task())
 
     try:
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
     except KeyboardInterrupt:
-        logging.info("Shutting down monitoring...")
+        logging.info("Interrupt received, shutting down...")
     finally:
+        # Cancel all tasks
+        for task in asyncio.all_tasks():
+            if task is not asyncio.current_task():
+                task.cancel()
         loop.close()
+
+        # Wait for all tasks to be cancelled
+        await asyncio.gather(*asyncio.all_tasks(), return_exceptions=True)
+        logging.info("All tasks cancelled successfully.")
+        # TO do fix task cancelation
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logging.info("Shutting down monitoring...")
-        sys.exit(0)
+        logging.info("Monitoring shutdown completed.")
+    sys.exit(0)

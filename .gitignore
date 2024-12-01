@@ -9,3 +9,4 @@ dist
 tnom.spec
 chain_database
 tnom-exec
+Dockerfile

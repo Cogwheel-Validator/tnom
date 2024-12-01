@@ -44,7 +44,7 @@ def run_nuitka_build() -> None:
         "--include-package=query",
         "--include-package=utility",
         "--include-data-dir={}=.".format(project_root / "tnom"),
-        "--standalone",
+        "--onefile",
         "--output-dir=build",
         "--output-filename=tnom",
         str(project_root / "tnom" / "main.py"),

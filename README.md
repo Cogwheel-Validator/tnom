@@ -66,10 +66,10 @@ essential tools. To install it you can use the following command:
 
 For Debian based systems (Debian, Ubuntu, etc.):
 ```bash
-sudo apt-get update -y \
-sudo apt-get install build-essential -y \
-sudo apt-get install clang -y \
-sudo apt-get install patchelf -y
+sudo apt update 
+sudo apt install build-essential -y \
+sudo apt install clang -y \
+sudo apt install patchelf -y
 ```
 
 For RHEL based systems (Fedora, Rocky Linux, etc.):

@@ -49,6 +49,9 @@ def create_database(path: Path) -> None:
             """CREATE TABLE IF NOT EXISTS tnom (
                 slash_epoch INTEGER PRIMARY KEY,
                 miss_counter_events INTEGER,
+                miss_counter_p1_executed INTEGER DEFAULT 0,
+                miss_counter_p2_executed INTEGER DEFAULT 0,
+                miss_counter_p3_executed INTEGER DEFAULT 0,
                 unsigned_oracle_events INTEGER,
                 price_feed_addr_balance INTEGER,
                 small_balance_alert_executed INTEGER,
@@ -105,6 +108,9 @@ def read_current_epoch_data(path: Path, epoch: int) -> dict[str, int]:
         return {
             "slash_epoch": data["slash_epoch"],
             "miss_counter_events": data["miss_counter_events"],
+            "miss_counter_p1_executed": data["miss_counter_p1_executed"],
+            "miss_counter_p2_executed": data["miss_counter_p2_executed"],
+            "miss_counter_p3_executed": data["miss_counter_p3_executed"],
             "unsigned_oracle_events": data["unsigned_oracle_events"],
             "price_feed_addr_balance": data["price_feed_addr_balance"],
             "small_balance_alert_executed": data["small_balance_alert_executed"],
@@ -140,6 +146,9 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
     if (
         data.get("slash_epoch") is None
         or data.get("miss_counter_events") is None
+        or data.get("miss_counter_p1_executed") is None
+        or data.get("miss_counter_p2_executed") is None
+        or data.get("miss_counter_p3_executed") is None
         or data.get("unsigned_oracle_events") is None
         or data.get("price_feed_addr_balance") is None
         or data.get("small_balance_alert_executed") is None
@@ -153,10 +162,13 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
         # Try to insert first
         try:
             cur.execute(
-                "INSERT INTO tnom VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO tnom VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     data["slash_epoch"],
                     data["miss_counter_events"],
+                    data["miss_counter_p1_executed"],
+                    data["miss_counter_p2_executed"],
+                    data["miss_counter_p3_executed"],
                     data["unsigned_oracle_events"],
                     data["price_feed_addr_balance"],
                     data["small_balance_alert_executed"],
@@ -170,6 +182,9 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
             cur.execute("""
                 UPDATE tnom
                 SET miss_counter_events = ?,
+                    miss_counter_p1_executed = ?,
+                    miss_counter_p2_executed = ?,
+                    miss_counter_p3_executed = ?,
                     unsigned_oracle_events = ?,
                     price_feed_addr_balance = ?,
                     small_balance_alert_executed = ?,
@@ -178,6 +193,9 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
                 WHERE slash_epoch = ?
             """, (
                 data["miss_counter_events"],
+                data["miss_counter_p1_executed"],
+                data["miss_counter_p2_executed"],
+                data["miss_counter_p3_executed"],
                 data["unsigned_oracle_events"],
                 data["price_feed_addr_balance"],
                 data["small_balance_alert_executed"],
@@ -217,6 +235,9 @@ def overwrite_single_field(path: Path, epoch: int, field: str, value: int) -> No
 
     allowed_columns = [
         "miss_counter_events",
+        "miss_counter_p1_executed",
+        "miss_counter_p2_executed",
+        "miss_counter_p3_executed",
         "unsigned_oracle_events",
         "price_feed_addr_balance",
         "small_balance_alert_executed",
@@ -233,7 +254,7 @@ def overwrite_single_field(path: Path, epoch: int, field: str, value: int) -> No
         with sqlite3.connect(path) as conn:
             cur = conn.cursor()
             query = f"UPDATE tnom SET {field} = ? WHERE slash_epoch = ?" # TO DO
-            # fix this error although it should still be proteced by allowed columns
+            # fix this error although it should still be protected by allowed columns
             cur.execute(query, (value, epoch))
             conn.commit()
     except sqlite3.Error as e:

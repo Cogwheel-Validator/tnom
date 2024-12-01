@@ -57,41 +57,109 @@ class MonitoringSystem:
             "critical": False,
         }
 
+    # This parameter is related to the miss counter events which is not the same as
+    # the unsigning events. During the process of testing the script I was not able
+    # to reproduce missing event. I think it is related to missing when the oracle
+    # is voting price higher/lower then rest of the validators.
+    # For now alerts will be placed until there is a possibility to test it out, but
+    # it is not 100%\ sure it will work as I haven't seen it ever captured.
+    # TO DO in the future clear the naming since it will probably create confusion
+    # wit the current missing of signing events.
+    async def process_miss_parameter_alerts(
+        self,
+        query_data: dict,
+        current_data: dict) -> None:
+        """Handle miss parameter alerts."""
+        # Tresholds are set at random since I couldn't execute it in the test
+        thresholds = [
+            ("miss_counter_p3_executed", 10, "warning"),
+            ("miss_counter_p2_executed", 25, "critical"),
+            ("miss_counter_p1_executed", 50, "critical"),
+        ]
+
+        for field, threshold, level in thresholds:
+            if (current_data["miss_counter_events"] > threshold and
+                current_data[field] == 0):
+                await self._trigger_miss_parameter_alert(
+                    query_data, current_data, level,
+                    f"Current miss event is above {threshold}",
+                    field, 1,
+                )
+
+    async def _trigger_miss_parameter_alert(
+        self,
+        query_data: dict,
+        current_data: dict,
+        alert_level: str,
+        summary: str,
+        field: str,
+        new_value: int) -> None:
+            """Helper method to trigger miss parameter alerts."""
+            alert_details = {
+                "miss_counter": (str(current_data["miss_counter"]), "events"),
+                "alert_level": alert_level,
+            }
+            if self.alert_yml.get("pagerduty_alerts") is True:
+                pd_details = alert_details.copy()
+                await asyncio.gather(
+                    alerts.pagerduty_alert_trigger(
+                        self.alert_yml["pagerduty_routing_key"],
+                        pd_details,
+                        summary,
+                        alert_level,
+                    ),
+                    database_handler.overwrite_single_field(
+                        self.database_path, query_data["current_epoch"], field, new_value,
+                    ),
+                )
+            if self.alert_yml.get("telegram_alerts") is True:
+                tg_details = alert_details.copy()
+                await asyncio.gather(
+                    alerts.telegram_alert_trigger(
+                        self.alert_yml["telegram_bot_token"], tg_details,
+                        self.alert_yml["telegram_chat_id"],
+                    ),
+                    database_handler.overwrite_single_field(
+                        self.database_path, query_data["current_epoch"], field, new_value,
+                    ),
+                )
+
     async def process_balance_alerts(
         self,
         query_data: dict,
         current_data: dict) -> None:
         """Handle wallet balance alerts."""
-        db_small_bal_alert = current_data["small_balance_alert_executed"]
-        db_very_small_bal_alert = current_data["very_small_balance_alert_executed"]
+        balance_alerts = [
+            {
+                "threshold": ONE_NIBI,
+                "executed_field": "small_balance_alert_executed",
+                "critical_message":
+                    "Price feeder wallet balance has less than 1 NIBI!",
+                "recovery_message":
+                    "Price feeder wallet balance has more than 1 NIBI!",
+            },
+            {
+                "threshold": ZERO_PT_ONE,
+                "executed_field": "very_small_balance_alert_executed",
+                "critical_message":
+                    "Price feeder wallet balance has less than 0.1 NIBI!",
+                "recovery_message":
+                    "Price feeder wallet balance has more than 0.1 NIBI!",
+            },
+        ]
 
-        # Check for low balance conditions
-        if query_data["wallet_balance"] < ONE_NIBI and db_small_bal_alert == 0:
-            await self._trigger_balance_alert(
-                query_data, "critical", "Price feeder wallet balance has less than 1 NIBI!",
-                "small_balance_alert_executed", 1,
-            )
-
-        if query_data["wallet_balance"] < ZERO_PT_ONE and db_very_small_bal_alert == 0:
-            await self._trigger_balance_alert(
-                query_data, "critical",
-                "Price feeder wallet balance has less than 0.1 NIBI!",
-                "very_small_balance_alert_executed", 1,
-            )
-
-        # Check for balance recovery conditions
-        if query_data["wallet_balance"] >= ONE_NIBI and db_small_bal_alert != 0:
-            await self._trigger_balance_alert(
-                query_data, "info", "Price feeder wallet balance has more than 1 NIBI!",
-                "small_balance_alert_executed", 0,
-            )
-
-        if query_data["wallet_balance"] >= ZERO_PT_ONE and db_very_small_bal_alert != 0:
-            await self._trigger_balance_alert(
-                query_data, "info",
-                "Price feeder wallet balance has more than 0.1 NIBI!",
-                "very_small_balance_alert_executed", 0,
-            )
+        for alert in balance_alerts:
+            executed = current_data[alert["executed_field"]]
+            if query_data["wallet_balance"] < alert["threshold"] and executed == 0:
+                await self._trigger_balance_alert(
+                    query_data, "critical", alert["critical_message"],
+                    alert["executed_field"], 1,
+                )
+            elif query_data["wallet_balance"] >= alert["threshold"] and executed != 0:
+                await self._trigger_balance_alert(
+                    query_data, "info", alert["recovery_message"],
+                    alert["executed_field"], 0,
+                )
 
     async def _trigger_balance_alert(self, query_data: dict, level: str,
                                      summary: str, field: str, new_value: int) -> None:
@@ -342,7 +410,7 @@ async def main() -> None:
                 if database_handler.check_if_epoch_is_recorded(
                     database_path, query_data["current_epoch"]):
                     logging.info("Writing data in the existing epoch")
-                    # Step 5.2a - Update tthe existing db with data
+                    # Step 5.2a - Update the existing db with data
 
                     # read current epoch data
                     read_crw_data: dict = database_handler.read_current_epoch_data(
@@ -353,6 +421,12 @@ async def main() -> None:
                     db_very_small_bal_alert: int = (
                         read_crw_data["very_small_balance_alert_executed"])
                     db_consecutive_misses: int = read_crw_data["consecutive_misses"]
+                    db_miss_counter_p1_executed : int = read_crw_data[
+                        "miss_counter_p1_executed"]
+                    db_miss_counter_p2_executed : int = read_crw_data[
+                        "miss_counter_p2_executed"]
+                    db_miss_counter_p3_executed : int = read_crw_data[
+                        "miss_counter_p3_executed"]
                     # if the check failed the return should be false adding +1 to not
                     # signing events
                     if query_data["check_for_aggregate_votes"] is False:
@@ -361,6 +435,9 @@ async def main() -> None:
                     insert_data: dict[int] = {
                         "slash_epoch": query_data["current_epoch"],
                         "miss_counter_events": query_data["miss_counter"],
+                        "miss_counter_p1_executed": db_miss_counter_p1_executed,
+                        "miss_counter_p2_executed": db_miss_counter_p2_executed,
+                        "miss_counter_p3_executed": db_miss_counter_p3_executed,
                         "unsigned_oracle_events": db_unsigned_or_ev,
                         "price_feed_addr_balance": query_data["wallet_balance"],
                         "small_balance_alert_executed": db_small_bal_alert,
@@ -397,6 +474,9 @@ async def main() -> None:
                     insert_data: dict[int] = {
                         "slash_epoch": query_data["current_epoch"],
                         "miss_counter_events": query_data["miss_counter"],
+                        "miss_counter_p1_executed": 0,
+                        "miss_counter_p2_executed": 0,
+                        "miss_counter_p3_executed": 0,
                         "unsigned_oracle_events": 0,
                         "price_feed_addr_balance": query_data["wallet_balance"],
                         "small_balance_alert_executed": prev_small_bal_alert,
@@ -410,6 +490,9 @@ async def main() -> None:
                     query_data["current_epoch"],
                     query_data,
                     insert_data["unsigned_oracle_events"],
+                )
+                await monitoring_system.process_miss_parameter_alerts(
+                    query_data, insert_data,
                 )
 
                 # Sleep for interval

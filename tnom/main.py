@@ -68,7 +68,7 @@ class MonitoringSystem:
         # Check for low balance conditions
         if query_data["wallet_balance"] < ONE_NIBI and db_small_bal_alert == 0:
             await self._trigger_balance_alert(
-                query_data, "high", "Price feeder wallet balance has less than 1 NIBI!",
+                query_data, "critical", "Price feeder wallet balance has less than 1 NIBI!",
                 "small_balance_alert_executed", 1,
             )
 
@@ -106,7 +106,7 @@ class MonitoringSystem:
                 self.alert_yml["pagerduty_routing_key"], alert_details, summary, level,
             )
         if self.alert_yml.get("telegram_alerts") is True:
-            alerts.telegram_alert_trigger(
+            await alerts.telegram_alert_trigger(
                 self.alert_yml["telegram_bot_token"], alert_details,
                 self.alert_yml["telegram_chat_id"],
             )
@@ -156,11 +156,11 @@ class MonitoringSystem:
             alerts_to_send.append({
                 "details": {
                     "consecutive_misses": self.consecutive_misses,
-                    "alert_level": "high",
+                    "alert_level": "critical",
                 },
                 "summary": f"""Alert: {self.consecutive_misses}
                 consecutive unsigned events detected!""",
-                "severity": "high",
+                "severity": "critical",
             })
             self.alert_sent["consecutive"] = True
 
@@ -169,11 +169,11 @@ class MonitoringSystem:
             alerts_to_send.append({
                 "details": {
                     "total_misses": total_misses,
-                    "alert_level": "high",
+                    "alert_level": "critical",
                 },
                 "summary": f"""Alert: Total unsigned events ({total_misses})
                 exceeded threshold!""",
-                "severity": "high",
+                "severity": "critical",
             })
             self.alert_sent["total"] = True
 
@@ -201,15 +201,15 @@ class MonitoringSystem:
 
         # Send all accumulated alerts
         for alert in alerts_to_send:
-            if self.alert_yml["pagerduty_alerts"]:
+            if self.alert_yml.get("pagerduty_alerts") is True:
                 alerts.pagerduty_alert_trigger(
                     self.alert_yml["pagerduty_routing_key"],
                     alert["details"],
                     alert["summary"],
                     alert["severity"],
                 )
-            if self.alert_yml["telegram_alerts"]:
-                alerts.telegram_alert_trigger(
+            if self.alert_yml.get("telegram_alerts") is True:
+                await alerts.telegram_alert_trigger(
                     self.alert_yml["telegram_bot_token"],
                     alert["details"],
                     self.alert_yml["telegram_chat_id"],

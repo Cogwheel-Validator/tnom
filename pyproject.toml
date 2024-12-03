@@ -4,6 +4,7 @@ version = "0.3.0"
 description = "The Nibiru Oracle Monitoring is a tool for monitoring signer wallet for Nibiru Oracle."
 authors = ["Kamikaza731"]
 readme = "README.md"
+license = "Apache-2.0"
 
 [tool.poetry.dependencies]
 python = "^3.11,<3.14"

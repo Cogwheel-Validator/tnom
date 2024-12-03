@@ -42,15 +42,16 @@ the compiled version.
 
 ## Requirements
 
-- Python 3.11 or higher 
-- Poetry (optional)
+- Python 3.11 or higher
 - All ot the requirements in the requirements.txt file
-- patchelf # only if you plan to compile the code
-- clang # only if you plan to compile the code
-- Docker # if you plan to deploy it using docker
+- Poetry (optional)
+- Python-dev (if you plan to compile the code)
+- patchelf (only if you plan to compile the code)
+- clang (only if you plan to compile the code)
+- Docker (if you plan to deploy it using docker)
 
-The script was made using Python 3.11 it should work with any version >= 3.11, but it
-has only been tested with 3.11. 
+The script was made using Python 3.11 it should work with any version >= 3.11, it has
+been tested with 3.11 and 3.12.
 
 Python Poetry was used to manage the dependencies. You can install it and use it to 
 run the script, but it is not vital to run the script. It just simplifies the 
@@ -69,15 +70,17 @@ For Debian based systems (Debian, Ubuntu, etc.):
 sudo apt update 
 sudo apt install build-essential -y \
 sudo apt install clang -y \
-sudo apt install patchelf -y
+sudo apt install patchelf -y \
+sudo apt install python-dev -y
 ```
 
 For RHEL based systems (Fedora, Rocky Linux, etc.):
 ```bash
-sudo dnf update -y \ 
-sudo dnf groupinstall "Development Tools" -y \
-sudo dnf install clang -y \
+sudo dnf update -y 
+sudo dnf groupinstall "Development Tools" -y 
+sudo dnf install clang -y 
 sudo dnf install patchelf -y
+sudo dnf install python-devel -y
 ```
 
 ## Set up config
@@ -119,6 +122,19 @@ create a guide on how to set them up. Some links to get you started:
 - [Telegram](https://core.telegram.org/bots/tutorial)
 - [HealthCheck](https://healthchecks.io/docs/)
 
+### Recommended setup
+
+This is just a recommendation you can set up your own TNOM however you wish.
+You can always set up everything in the project directory. And you can run the script/
+binary from here.
+
+![TNOM1](./src/TNOM-Page-1.jpg)
+
+Or you can create a dedicated directory and place everything there. This might make 
+more sense if you plan to run it via Docker for example.
+
+![TNOM2](./src/TNOM-page-2.jpg)
+
 ## How to run the script
 
 The script can accept arguments that can be passed to by using the command line.
@@ -145,7 +161,7 @@ options:
   --version             show program's version number and exit
 ```
 
-Flag working-dir is technically optional. It always takes as a default value the 
+Flag working-dir is optional. It always takes as a default value the 
 current directory from where the script is run. For example if you ran it while in 
 /home/user/ that will be considered a working directory. It is recommended to use
 for consistency because it will later generate database in that directory. You can
@@ -168,7 +184,7 @@ Run the script using Poetry:
 git clone https://github.com/Cogwheel-Validator/tnom.git
 cd tnom
 poetry install
-poetry run python tnom/main.py --working-dir /path/to/working/dir
+poetry run python tnom/main.py --working-dir /path/to/working/dir --config-path /path/to/config.yml --alert-path /path/to/alert.yml
 ```
 
 Run the script using Python directly:
@@ -181,13 +197,22 @@ python -m venv v-tnom
 source v-tnom/bin/activate
 pip install -r requirements.txt
 # run the script
-python tnom/main.py --working-dir /path/to/working/dir
+python tnom/main.py --working-dir /path/to/working/dir --config-path /path/to/config.yml --alert-path /path/to/alert.yml
 ```
 
 ### Option 2 - Building the TNOM binary
 
 Building the binary might take time. The code is compiled to C then it is compiled
-into an executable binary. Depending on your system, it can up to an hour to build.
+into an executable binary. Depending on your system, it can up to an 30 minutes to 
+build.
+
+For the reference it took about this much to build the binary on these machines:
+2 vCPU: ~ 30 minutes
+4 vCPU: ~ 15 minutes
+8/16t CPU: ~ 5 minutes 
+
+It might take more/less time depending on your system. This should just give you some
+idea of how long it can take.
 
 Build using Poetry:
 
@@ -207,7 +232,7 @@ python nuitka_builder.py
 
 The binary will be created in the build directory. You can from there run the binary:
 ```bash
-./build/tnom --working-dir /path/to/working/dir
+./build/tnom --working-dir /path/to/working/dir --config-path /path/to/config.yml --alert-path /path/to/alert.yml
 ```
 
 ### Option 3 - Download the binary
@@ -218,8 +243,11 @@ Download the binary:
 wget https://github.com/Cogwheel-Validator/tnom/releases/latest/download/tnom
 # fix this later when you add the binary
 chmod +x tnom
-./tnom --working-dir /path/to/working/dir
+./tnom --working-dir /path/to/working/dir --config-path /path/to/config.yml --alert-path /path/to/alert.yml
 ```
+
+The binary can be placed anywhere you want. For example you can place it in /usr/bin/
+or /usr/local/bin/ which ever you prefer.
 
 ## Deployment options
 
@@ -230,17 +258,24 @@ fixed use something similar to KillSignal=SIGINT.
 
 ### Systemd
 
+This is assuming you run it from project root directory with and you have decided to 
+also use it as a working dir and store .yml files. It assumes you run the script via 
+Poetry. If you want to run with Python directly you can use just change ExecStart 
+to `(which python) tnom/main.py`. If you have working dir placed somewhere else or 
+plan to place config and alert files somewhere else you can change the paths by  
+adding arguments. For arguments check this [section](#how-to-run-the-script). 
+
 ```bash
 sudo tee /etc/systemd/system/tnom.service > /dev/null <<EOF
 [Unit]
-Description=”TNOM Monitoring Service”
+Description=”TNOM Script Monitoring Service”
 After=network-online.target
  
 [Service]
 User=$USER
-ExecStart=$(which poetry) run python tnom/main.py 
+ExecStart=$(which poetry) run python tnom/main.py
 WorkingDirectory=$HOME/tnom
-Restart=on-failure 
+Restart=always 
 RestartSec=5
 
 KillMode=process
@@ -250,6 +285,31 @@ KillSignal=SIGINT
 WantedBy=multi-user.target
 EOF
 ```
+
+And this config assumes you run the TNOM via binary. It also assumes you have placed
+the executable in the /usr/local/bin/ directory.
+
+```bash
+sudo tee /etc/systemd/system/tnom.service > /dev/null <<EOF
+[Unit]
+Description=”TNOM binary Monitoring Service”
+After=network-online.target
+ 
+[Service]
+User=$USER
+ExecStart=/usr/local/bin/tnom --working-dir /path/to/working/dir --config-path /path/to/config.yml --alert-path /path/to/alert.yml
+WorkingDirectory=$HOME/tnom
+Restart=always 
+RestartSec=5
+
+KillMode=process
+KillSignal=SIGINT
+ 
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
 Start and enable service
 ```bash
 sudo systemctl daemon-reload

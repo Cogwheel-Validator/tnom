@@ -206,10 +206,10 @@ Building the binary might take time. The code is compiled to C then it is compil
 into an executable binary. Depending on your system, it can up to an 30 minutes to 
 build.
 
-For the reference it took about this much to build the binary on these machines:
-2 vCPU: ~ 30 minutes
-4 vCPU: ~ 15 minutes
-8/16t CPU: ~ 5 minutes 
+For the reference it took about this much to build the binary on these machines: <br/>
+2 vCPU: ~ 30 minutes <br/>
+4 vCPU: ~ 15 minutes <br/>
+8/16t CPU: ~ 5 minutes <br/>
 
 It might take more/less time depending on your system. This should just give you some
 idea of how long it can take.

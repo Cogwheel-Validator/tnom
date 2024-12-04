@@ -2,7 +2,7 @@
 
 The Nibiru Oracle Monitor is a monitoring tool for the Nibiru Oracle. It monitors if
 the price feeder signed and wallet balances of the Nibiru Oracle, and alerts if 
-any of these values are out of expected range. TNOM is written in Python, and the
+any of these values are out of the expected range. TNOM is written in Python, and the
 script can be compiled using Nuitka.
 
 ## Table of Contents
@@ -20,12 +20,12 @@ script can be compiled using Nuitka.
 
 TNOM is a monitoring tool. It collects data from Nibiru's REST APIs. The data is then
 stored in the local SQLite database. It then checks if the data is within the expected
-range. For example if certain amount of unsigned event from oracle happens, or if the
-wallet balance is below a certain amount. If the data is not within the expected range, TNOM alerts the user. Currently it only supports pagerduty and telegram as the
-means of sending alerts. It also supports health checks if script or your server halts
-for some reason.
+range. For example, if a certain amount of unsigned events from oracle happens, or if the
+wallet balance is below a certain amount. If the data is not within the expected range,
+TNOM alerts the user. Currently, it only supports Pagerduty and Telegram as the
+means of sending alerts. It also supports health checks if the script or your server halts.
 
-TNOM can run directly using Python, or you can compile the code using Nuitka. 
+TNOM can be run directly using Python, or you can compile the code using Nuitka. 
 The compiled version is somewhat faster but the con is that it might take a while
 to build it. You can also download the compiled version.
 
@@ -37,18 +37,18 @@ There are two ways to run TNOM:
 3. Or download the compiled version
 
 The script was made with Poetry. You can use Poetry to install and run the script, 
-use python directly and run it like that, build the script using Nuitka, or download
+use Python directly and run it like that, build the script using Nuitka, or download
 the compiled version.
 
 ## Requirements
 
 - Python 3.11 or higher
-- All ot the requirements in the requirements.txt file
+- All of the requirements in the requirements.txt file
 - Poetry (optional)
 - Python-dev (if you plan to compile the code)
 - patchelf (only if you plan to compile the code)
 - clang (only if you plan to compile the code)
-- Docker (if you plan to deploy it using docker)
+- Docker (if you plan to deploy it using Docker)
 
 The script was made using Python 3.11 it should work with any version >= 3.11, it has
 been tested with 3.11 and 3.12.
@@ -65,7 +65,7 @@ curl -sSL https://install.python-poetry.org | python3 -
 If you plan to compile the code you will need to install patchelf, clang and some
 essential tools. To install it you can use the following command:
 
-For Debian based systems (Debian, Ubuntu, etc.):
+For Debian-based systems (Debian, Ubuntu, etc.):
 ```bash
 sudo apt update 
 sudo apt install build-essential -y \
@@ -74,7 +74,7 @@ sudo apt install patchelf -y \
 sudo apt install python-dev -y
 ```
 
-For RHEL based systems (Fedora, Rocky Linux, etc.):
+For RHEL-based systems (Fedora, Rocky Linux, etc.):
 ```bash
 sudo dnf update -y 
 sudo dnf groupinstall "Development Tools" -y 
@@ -87,24 +87,24 @@ sudo dnf install python-devel -y
 
 For this script to work you need to have:
 - A working directory, you can store it in the project root dir, or if you want
-    to keep it separate you can create a directory just for the script and store it 
-    there
+ to keep it separate you can create a directory just for the script and store it 
+ there
 - A config.yml file
 - An alert.yml file
 
-The config.yml file is file that stores data such as valoper address, interval check
-,APIs etc. Check the config_example.yml for an example. It should be an easy to edit
-yaml file.
+The config.yml file is a file that stores data such as valoper address, interval check
+, APIs etc. Check the config_example.yml for an example. It should be an easy-to-edit
+yml file.
 
 ```bash
 cp config_example.yml config.yml
 vim config.yml # or nano config.yml
 ```
 
-The alert config is a yaml file that stores the alert details. It requires to have
-pagerduty or telegram details. You can also use both options if you desire. Another
-feature is a dead man switch. This is a feature that will send an alert if the script
-does not run for a certain amount of time. It is not required, but it is recommended.
+The alert config is a yml file that stores the alert details. It requires to have
+Pagerduty or Telegram details. You can also use both options if you desire. Another
+feature is a dead man switch. This feature will send an alert if the script
+does not run for a while. It is not required, but it is recommended.
 Check the alert_example.yml for an example.
 
 ```bash
@@ -112,10 +112,10 @@ cp alert_example.yml alert.yml
 vim alert.yml # or nano alert.yml
 ```
 
-For alert to work you will need at least telegram bot and chat id, and for pagerduty 
+For alert to work you will need at least a Telegram bot and chat ID, and for Pagerduty 
 you will need a routing key from Events API v2. The alerts have multiple severity
 levels so you can set dynamic notifications. Setting up telegram, pagerduty and health
-check is out of the scope of this guide. If there are many intrested people, I might
+check is out of the scope of this guide. If there are many interested people, I might
 create a guide on how to set them up. Some links to get you started:
 
 - [PagerDuty](https://developer.pagerduty.com/docs/3d063fd4814a6-events-api-v2-overview)
@@ -124,7 +124,7 @@ create a guide on how to set them up. Some links to get you started:
 
 ### Recommended setup
 
-This is just a recommendation you can set up your own TNOM however you wish.
+This is just a recommendation you can set up your TNOM however you wish.
 You can always set up everything in the project directory. And you can run the script/
 binary from here.
 
@@ -143,7 +143,7 @@ You can print help if you feel stuck.
 poetry run python tnom/main.py -h # or python tnom/main.py --help 
 # or build/tnom -h if you built executable binary
 usage: main.py [-h] [--working-dir WORKING_DIR] [--config-path CONFIG_PATH]
-               [--alert-path ALERT_PATH] [--version]
+ [--alert-path ALERT_PATH] [--version]
 
 Monitoring system for price feeds and wallet balances
 
@@ -162,19 +162,19 @@ options:
 ```
 
 Flag working-dir is optional. It always takes as a default value the 
-current directory from where the script is run. For example if you ran it while in 
+current directory from where the script is run. For example, if you run it while in 
 /home/user/ that will be considered a working directory. It is recommended to use
-for consistency because it will later generate database in that directory. You can
-select any directory but it might make sense to place it inside project root 
+for consistency because it will later generate a database in that directory. You can
+select any directory but it might make sense to place it inside the project root 
 directory.
 
-The config-path is the path to config.yml file. It is optional but as a default it
+The config-path is the path to config.yml file. It is optional but as a default, it
 takes as a value /working-dir/config.yml. So you can place it inside of your work dir,
 or if you want to keep it separate you can create a directory just for the config and
 then when running use the argument --config-path /path/to/config.yml.
 
 The alert-path is the path to alert.yml file. It is optional and it functions 
-identically to --config-path argument. So you ether place it in the working dir, or use argument --alert-path /path/to/alert.yml while running the script.
+identically to the --config-path argument. So you either place it in the working dir or use argument --alert-path /path/to/alert.yml while running the script.
 
 ### Option 1 - Running the script directly
 
@@ -203,10 +203,10 @@ python tnom/main.py --working-dir /path/to/working/dir --config-path /path/to/co
 ### Option 2 - Building the TNOM binary
 
 Building the binary might take time. The code is compiled to C then it is compiled
-into an executable binary. Depending on your system, it can up to an 30 minutes to 
+into an executable binary. Depending on your system, it can up to 30 minutes to 
 build.
 
-For the reference it took about this much to build the binary on these machines: <br/>
+For reference, it took about this much to build the binary on these machines: <br/>
 2 vCPU: ~ 30 minutes <br/>
 4 vCPU: ~ 15 minutes <br/>
 8/16t CPU: ~ 5 minutes <br/>
@@ -246,21 +246,21 @@ chmod +x tnom
 ./tnom --working-dir /path/to/working/dir --config-path /path/to/config.yml --alert-path /path/to/alert.yml
 ```
 
-The binary can be placed anywhere you want. For example you can place it in /usr/bin/
-or /usr/local/bin/ which ever you prefer.
+The binary can be placed anywhere you want. For example, you can place it in /usr/bin/
+or /usr/local/bin/whichever you prefer.
 
 ## Deployment options
 
-Here you can find some basic set up to deploy it on server and run it 24/7.
-A word of advice, what ever program you use you need to have kill signal in place.
+Here you can find some basic setup to deploy it on the server and run it 24/7.
+A word of advice, whatever program you use you need to have a kill signal in place.
 At the moment the script has a problem to stop the script gracefully. Until this is
 fixed use something similar to KillSignal=SIGINT.
 
 ### Systemd
 
-This is assuming you run it from project root directory with and you have decided to 
+This is assuming you run it from the project root directory and you have decided to 
 also use it as a working dir and store .yml files. It assumes you run the script via 
-Poetry. If you want to run with Python directly you can use just change ExecStart 
+Poetry. If you want to run with Python directly you can just change ExecStart 
 to `(which python) tnom/main.py`. If you have working dir placed somewhere else or 
 plan to place config and alert files somewhere else you can change the paths by  
 adding arguments. For arguments check this [section](#how-to-run-the-script). 
@@ -268,7 +268,7 @@ adding arguments. For arguments check this [section](#how-to-run-the-script).
 ```bash
 sudo tee /etc/systemd/system/tnom.service > /dev/null <<EOF
 [Unit]
-Description=”TNOM Script Monitoring Service”
+Description=” TNOM Script Monitoring Service”
 After=network-online.target
  
 [Service]
@@ -317,9 +317,9 @@ sudo systemctl enable tnom.service
 sudo systemctl start tnom.service
 ```
 
-### Docker
+### Docker (still needs testing)
 
-From the Dockerfile create image.
+From the Dockerfile create the image.
 
 ```bash
 docker build -t tnom:v0.3.0 .
@@ -335,8 +335,8 @@ vim ./config/alert.yml
 
 # Run the Docker container with volume mounts
 docker run -d \
-  -v $(pwd)/config:/app/config \
+ -v $(pwd)/config:/app/config \
   -v $(pwd)/chain_database:/app/chain_database \
-  --name tnom \
+ --name tnom \
   tnom:v0.3.0
 ```

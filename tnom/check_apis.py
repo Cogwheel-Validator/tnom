@@ -24,10 +24,10 @@ async def check_apis(load_config: dict[str, Any]) -> list[str]:
         loaded_apis = load_config["APIs"]
         tasks = [query.check_latest_block(api, session) for api in loaded_apis]
         responses = await asyncio.gather(*tasks, return_exceptions=True)
-        # Fully functional APIS
+        # Fully functional APIs
         online_apis_with_data = [(api, response) for api, response in zip(
             loaded_apis, responses) if not isinstance(response, Exception)]
-        # Unhealthy APIS
+        # Unhealthy APIs
         unhealthy_apis = [api for api, response in zip(
             loaded_apis, responses) if isinstance(response, Exception)]
 

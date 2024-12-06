@@ -410,6 +410,7 @@ async def main() -> None:
     # Initialize and check the database
     try:
         init_and_check_db(working_dir)
+        database_handler.check_and_update_database_schema(database_path)
     except Exception as e:
         logging.exception("Failed to initialize database: %s", e)  # noqa: TRY401
         sys.exit(1)
@@ -446,7 +447,7 @@ async def main() -> None:
             try:
                 # Step three - check APIs
                 healthy_apis = await check_apis(config_yml)
-                while healthy_apis is None:
+                while not healthy_apis:
                     logging.error("Failed to check APIs")
                     latest_epoch = database_handler.read_last_recorded_epoch(database_path)
                     await monitoring_system.process_api_not_working(
@@ -454,7 +455,7 @@ async def main() -> None:
                     # stop the script here and start from while True again until there
                     # is a healthy api
                     await asyncio.sleep(config_yml.get("monitoring_interval", 60))
-                    continue
+                    healthy_apis = await check_apis(config_yml)
 
                 # Step four - Make query with random healthy API
                 query_results = await query_rand_api.collect_data_from_random_healthy_api(  # noqa: E501
@@ -489,6 +490,7 @@ async def main() -> None:
                         "miss_counter_p2_executed"]
                     db_miss_counter_p3_executed : int = read_crw_data[
                         "miss_counter_p3_executed"]
+                    db_api_cons_miss : int = read_crw_data["api_cons_miss"]
                     # if the check failed the return should be false adding +1 to not
                     # signing events
                     if query_data["check_for_aggregate_votes"] is False:
@@ -505,6 +507,7 @@ async def main() -> None:
                         "small_balance_alert_executed": db_small_bal_alert,
                         "very_small_balance_alert_executed": db_very_small_bal_alert,
                         "consecutive_misses": db_consecutive_misses,
+                        "api_cons_miss": db_api_cons_miss,
                     }
                     database_handler.write_epoch_data(database_path, insert_data)
                 elif database_handler.check_if_epoch_is_recorded(
@@ -544,6 +547,7 @@ async def main() -> None:
                         "small_balance_alert_executed": prev_small_bal_alert,
                         "very_small_balance_alert_executed": prev_very_small_bal_alert,
                         "consecutive_misses": prev_consecutive_misses,
+                        "api_cons_miss": 0,
                     }
                     database_handler.write_epoch_data(database_path, insert_data)
                      # Process alerts

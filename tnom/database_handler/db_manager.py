@@ -138,8 +138,8 @@ def create_database(path: Path) -> None:
                 price_feed_addr_balance INTEGER,
                 small_balance_alert_executed INTEGER,
                 very_small_balance_alert_executed INTEGER,
-                consecutive_misses INTEGER DEFAULT 0
-                api_cons_miss INTEGER DEFAULT 0,
+                consecutive_misses INTEGER DEFAULT 0,
+                api_cons_miss INTEGER DEFAULT 0
             )""",
         )
 

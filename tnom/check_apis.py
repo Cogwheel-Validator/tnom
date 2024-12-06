@@ -32,12 +32,15 @@ async def check_apis(load_config: dict[str, Any]) -> list[str]:
             loaded_apis, responses) if isinstance(response, Exception)]
 
         if not online_apis_with_data:
+            logging.warning("No healthy APIs found")
+            logging.info("Unhealthy APIs: %s", unhealthy_apis)
             return []
 
         max_block_height = max(api_data[0] for _, api_data in online_apis_with_data)
 
         healthy_apis = [api for api, (block_height, _) in online_apis_with_data
-                        if max_block_height - block_height <= MAX_BLOCK_HEIGHT_DIFF]
-        logging.info("""Healthy APIs: %s\n Unhealthy APIs: %s\n""",
-                     healthy_apis, unhealthy_apis)
+                       if max_block_height - block_height <= MAX_BLOCK_HEIGHT_DIFF]
+
+        logging.info("Healthy APIs: %s\nUnhealthy APIs: %s",
+                    healthy_apis, unhealthy_apis)
         return healthy_apis

@@ -21,14 +21,14 @@ async def collect_data_from_random_healthy_api(
 
     Returns:
         dict[str, Any]: A dictionary containing all the collected data. Returns
-        None if no healthy APIs are found.
+        False if no healthy APIs are found.
 
     """
     if not healthy_apis:
         logging.error("""No healthy APIs found! \n
                       Check your config file or is the chain halted.""")
-        # retrun None or an empty list
-        return None
+        # retrun False or an empty list
+        return False
     async with aiohttp.ClientSession() as session:
         # select API
         random_healthy_api = (random.choice(healthy_apis))  # noqa: S311

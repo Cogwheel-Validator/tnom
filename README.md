@@ -240,7 +240,7 @@ The binary will be created in the build directory. You can from there run the bi
 Download the binary:
 
 ```bash
-wget https://github.com/Cogwheel-Validator/tnom/releases/latest/download/tnom
+wget https://github.com/Cogwheel-Validator/tnom/releases/download/v0.3.0/tnom_debian_X86_64
 # fix this later when you add the binary
 chmod +x tnom
 ./tnom --working-dir /path/to/working/dir --config-path /path/to/config.yml --alert-path /path/to/alert.yml

@@ -372,7 +372,7 @@ docker run -d \
  -v $(pwd)/config:/app/config \
   -v $(pwd)/chain_database:/app/chain_database \
  --name tnom \
-  tnom:v0.5.0
+  tnom:v0.5.1
 ```
 
 # Prometheus metrics

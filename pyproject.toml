@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "tnom"
-version = "0.4.0"
+version = "0.4.1"
 description = "The Nibiru Oracle Monitoring is a tool for monitoring signer wallet for Nibiru Oracle."
 authors = ["Kamikaza731"]
 readme = "README.md"

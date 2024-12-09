@@ -26,10 +26,12 @@ async def check_apis(load_config: dict[str, Any]) -> list[str]:
         responses = await asyncio.gather(*tasks, return_exceptions=True)
         # Fully functional APIs
         online_apis_with_data = [(api, response) for api, response in zip(
-            loaded_apis, responses) if not isinstance(response, Exception)]
+            loaded_apis, responses) if not isinstance(response, Exception)
+                                 and response is not None]
         # Unhealthy APIs
         unhealthy_apis = [api for api, response in zip(
-            loaded_apis, responses) if isinstance(response, Exception)]
+            loaded_apis, responses) if isinstance(response, Exception)
+                          or response is None]
 
         if not online_apis_with_data:
             logging.warning("No healthy APIs found")

@@ -301,8 +301,31 @@ class MonitoringSystem:
         if no_healthy_apis is True:
             api_consecutive_misses += 1
         elif no_healthy_apis is False:
-            api_consecutive_misses = 0
             self.alert_sent["healthy_api_missing"] = False
+            # if the API was not working properlly for more than 3 minutes and
+            # it started working again it should send an info alert that
+            # everything is back to normal
+            if self.api_consecutive_misses >= API_CONS_MISS_THRESHOLD:
+                summary = "Alert: API working again!"
+                level = "info"
+                alert_details = {
+                    "api_consecutive_misses": api_consecutive_misses,
+                    "alert_level": "info",
+                }
+                if self.alert_yml.get("pagerduty_alerts") is True:
+                    alerts.pagerduty_alert_trigger(
+                        self.alert_yml["pagerduty_routing_key"],
+                        alert_details,
+                        summary,
+                        level,
+                    )
+                if self.alert_yml.get("telegram_alerts") is True:
+                    await alerts.telegram_alert_trigger(
+                        self.alert_yml["telegram_bot_token"],
+                        alert_details,
+                        self.alert_yml["telegram_chat_id"],
+                    )
+            api_consecutive_misses = 0
 
         self.api_consecutive_misses = api_consecutive_misses
 
@@ -332,8 +355,8 @@ class MonitoringSystem:
         database_handler.overwrite_single_field(
             self.database_path,
             epoch,
-            "api_consecutive_misses",
-            api_consecutive_misses,
+            "api_cons_miss",
+            self.api_consecutive_misses,
         )
 
 def setup_argument_parser() -> argparse.ArgumentParser:
@@ -359,7 +382,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         "--config-path",
         type=str,
         help="Path to the config YAML file\n"
-             f"Default: {working_dir}/config.yml",
+             f"Default always looks to the current dir: {working_dir}/config.yml",
         default=working_dir / "config.yml",
         required=False,
     )
@@ -368,7 +391,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         "--alert-path",
         type=str,
         help="Path to the alert YAML file\n"
-             f"Default: {working_dir}/alert.yml",
+             f"Default always looks to the current dir: {working_dir}/alert.yml",
         default=working_dir / "alert.yml",
         required=False,
     )
@@ -376,7 +399,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="v0.4.0",
+        version="v0.4.1",
     )
 
     return parser
@@ -410,6 +433,7 @@ async def main() -> None:
     # Initialize and check the database
     try:
         init_and_check_db(working_dir)
+        # if it exists see if schema is ok
         database_handler.check_and_update_database_schema(database_path)
     except Exception as e:
         logging.exception("Failed to initialize database: %s", e)  # noqa: TRY401
@@ -449,7 +473,8 @@ async def main() -> None:
                 healthy_apis = await check_apis(config_yml)
                 while not healthy_apis:
                     logging.error("Failed to check APIs")
-                    latest_epoch = database_handler.read_last_recorded_epoch(database_path)
+                    latest_epoch = (
+                        database_handler.read_last_recorded_epoch(database_path))
                     await monitoring_system.process_api_not_working(
                         latest_epoch, no_healthy_apis=True)
                     # stop the script here and start from while True again until there

@@ -259,7 +259,7 @@ async def check_token_in_wallet(
 async def check_latest_block(
     api: str,
     session: aiohttp.ClientSession,
-) -> tuple[int, str] | None:
+) -> tuple[int, str]:
     """Check the latest block height of the chain.
 
     Args:
@@ -267,8 +267,11 @@ async def check_latest_block(
         session (aiohttp.ClientSession): The aiohttp client session
 
     Returns:
-        tuple[int, str] | None: A tuple of the latest block height and timestamp
-        if successful, otherwise None
+        tuple[int, str]: A tuple of the latest block height and timestamp
+
+    Raises:
+        aiohttp.ClientError: If there's an HTTP error
+        ValueError: If the response status is not OK or if the data is invalid
 
     """
     try:
@@ -281,9 +284,16 @@ async def check_latest_block(
                 block_height = int(json_data["block"]["header"]["height"])
                 timestamp = json_data["block"]["header"]["time"]
                 return (block_height, timestamp)
-            logging.error("Failed to collect latest block %s", response.status)
-            return None
-    except aiohttp.ContentTypeError as e:
-        logging.exception("Failed to collect latest block", exc_info=e)
-        return None
 
+            msg = f"API request failed with status {response.status}"
+            raise ValueError(msg)
+
+    except aiohttp.ContentTypeError as e:
+        logging.error("Content type error while collecting latest block: %s", str(e))
+        raise
+    except (KeyError, ValueError) as e:
+        logging.error("Invalid data received from API: %s", str(e))
+        raise
+    except Exception as e:
+        logging.error("Unexpected error while collecting latest block: %s", str(e))
+        raise

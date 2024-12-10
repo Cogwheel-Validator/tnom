@@ -17,6 +17,7 @@ ZERO_PT_ONE = 100000
 CONSECUTIVE_MISSES_THRESHOLD = 3
 TOTAL_MISSES_THRESHOLD = 10
 CRITICAL_MISSES_THRESHOLD = 20
+API_CONS_MISS_THRESHOLD = 3
 
 class MonitoringSystem:
     def __init__(self, config_yml: dict, alert_yml: dict, database_path: Path) -> None:
@@ -33,6 +34,7 @@ class MonitoringSystem:
             database_path (Path): The path to the database.
             consecutive_misses (int): The number of consecutive missed events.
             last_alert_epoch (int | None): The last epoch that alerts were sent.
+            api_consecutive_misses (int): The number of consecutive API was unavailable.
             alert_sent (dict[str, bool]): A dictionary of alert levels to boolean values
                 indicating whether an alert has been sent.
 
@@ -42,10 +44,12 @@ class MonitoringSystem:
         self.database_path = database_path
         self.consecutive_misses = 0
         self.last_alert_epoch = None
+        self.api_consecutive_misses = 0
         self.alert_sent = {
             "consecutive": False,
             "total": False,
             "critical": False,
+            "healthy_api_missing": False,
         }
 
     def reset_for_new_epoch(self) -> None:
@@ -55,6 +59,7 @@ class MonitoringSystem:
             "consecutive": False,
             "total": False,
             "critical": False,
+            "healthy_api_missing": False,
         }
 
     # This parameter is related to the miss counter events which is not the same as
@@ -283,6 +288,95 @@ class MonitoringSystem:
                     self.alert_yml["telegram_chat_id"],
                 )
 
+    async def process_api_not_working(
+        self,
+        epoch: int,
+        *,
+        no_healthy_apis: bool = True) -> None:
+        """Process no healthy APIs alert.
+
+        This function processes alert for no healthy APIs. If no_healthy_apis is True,
+        it increments the counter of consecutive misses of APIs and sends a warning
+        log message. If no_healthy_apis is False, it checks if the counter of
+        consecutive misses is above the threshold and sends a recovery alert if it
+        is. Then it resets the counter and the alert flag.
+
+        Args:
+            epoch (int): The epoch number.
+            no_healthy_apis (bool): If no healthy APIs are present. Defaults to True.
+
+        """
+        if self.last_alert_epoch != epoch:
+            self.reset_for_new_epoch()
+            self.last_alert_epoch = epoch
+
+        api_consecutive_misses = self.api_consecutive_misses
+        if no_healthy_apis is True:
+            api_consecutive_misses += 1
+            logging.warning("Warning API not working for %s times!",
+                            api_consecutive_misses)
+        elif no_healthy_apis is False:
+            # Check if we need to send recovery alert
+            if (self.api_consecutive_misses >= API_CONS_MISS_THRESHOLD
+                and self.alert_sent["healthy_api_missing"] is True):
+                summary = "Alert: API working again!"
+                level = "info"
+                alert_details = {
+                    "api_consecutive_misses": api_consecutive_misses,
+                    "alert_level": "info",
+                }
+                if self.alert_yml.get("pagerduty_alerts") is True:
+                    alerts.pagerduty_alert_trigger(
+                        self.alert_yml["pagerduty_routing_key"],
+                        alert_details,
+                        summary,
+                        level,
+                    )
+                if self.alert_yml.get("telegram_alerts") is True:
+                    await alerts.telegram_alert_trigger(
+                        self.alert_yml["telegram_bot_token"],
+                        alert_details,
+                        self.alert_yml["telegram_chat_id"],
+                    )
+            # Reset counter and alert flag after sending recovery alert
+            api_consecutive_misses = 0
+            self.alert_sent["healthy_api_missing"] = False
+
+        self.api_consecutive_misses = api_consecutive_misses
+
+        # Send alert for API down
+        if (api_consecutive_misses >= API_CONS_MISS_THRESHOLD and
+            not self.alert_sent["healthy_api_missing"]):
+                summary = "Alert: API not working!"
+                level = "critical"
+                alert_details = {
+                    "api_consecutive_misses": api_consecutive_misses,
+                    "alert_level": "critical",
+                }
+                if self.alert_yml.get("pagerduty_alerts") is True:
+                    alerts.pagerduty_alert_trigger(
+                        self.alert_yml["pagerduty_routing_key"],
+                        alert_details,
+                        summary,
+                        level,
+                    )
+                if self.alert_yml.get("telegram_alerts") is True:
+                    await alerts.telegram_alert_trigger(
+                        self.alert_yml["telegram_bot_token"],
+                        alert_details,
+                        self.alert_yml["telegram_chat_id"],
+                    )
+                self.alert_sent["healthy_api_missing"] = True
+
+        # Store data in the database
+        # TO DO decide if this will be needed in the upcoming versions
+        database_handler.overwrite_single_field(
+            self.database_path,
+            epoch,
+            "api_cons_miss",
+            self.api_consecutive_misses,
+        )
+
 def setup_argument_parser() -> argparse.ArgumentParser:
     """Set up and return the argument parser with all arguments configured."""
     parser = argparse.ArgumentParser(
@@ -306,7 +400,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         "--config-path",
         type=str,
         help="Path to the config YAML file\n"
-             f"Default: {working_dir}/config.yml",
+             f"Default always looks to the current dir: {working_dir}/config.yml",
         default=working_dir / "config.yml",
         required=False,
     )
@@ -315,7 +409,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         "--alert-path",
         type=str,
         help="Path to the alert YAML file\n"
-             f"Default: {working_dir}/alert.yml",
+             f"Default always looks to the current dir: {working_dir}/alert.yml",
         default=working_dir / "alert.yml",
         required=False,
     )
@@ -323,7 +417,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="v0.3.0",
+        version="v0.4.2",
     )
 
     return parser
@@ -357,6 +451,8 @@ async def main() -> None:
     # Initialize and check the database
     try:
         init_and_check_db(working_dir)
+        # if it exists see if schema is ok
+        database_handler.check_and_update_database_schema(database_path)
     except Exception as e:
         logging.exception("Failed to initialize database: %s", e)  # noqa: TRY401
         sys.exit(1)
@@ -392,7 +488,21 @@ async def main() -> None:
         while True:
             try:
                 # Step three - check APIs
+                latest_epoch = (
+                        database_handler.read_last_recorded_epoch(database_path))
                 healthy_apis = await check_apis(config_yml)
+                while not healthy_apis:
+                    logging.error("Failed to check APIs")
+                    await monitoring_system.process_api_not_working(
+                        latest_epoch, no_healthy_apis=True)
+                    # stop the script here and start from while True again until there
+                    # is a healthy api
+                    await asyncio.sleep(config_yml.get("monitoring_interval", 60))
+                    healthy_apis = await check_apis(config_yml)
+                # this is needed to revert the consecutive_misses counter
+                if healthy_apis:
+                    await monitoring_system.process_api_not_working(
+                        latest_epoch, no_healthy_apis=False)
 
                 # Step four - Make query with random healthy API
                 query_results = await query_rand_api.collect_data_from_random_healthy_api(  # noqa: E501
@@ -427,6 +537,7 @@ async def main() -> None:
                         "miss_counter_p2_executed"]
                     db_miss_counter_p3_executed : int = read_crw_data[
                         "miss_counter_p3_executed"]
+                    db_api_cons_miss : int = read_crw_data["api_cons_miss"]
                     # if the check failed the return should be false adding +1 to not
                     # signing events
                     if query_data["check_for_aggregate_votes"] is False:
@@ -443,6 +554,7 @@ async def main() -> None:
                         "small_balance_alert_executed": db_small_bal_alert,
                         "very_small_balance_alert_executed": db_very_small_bal_alert,
                         "consecutive_misses": db_consecutive_misses,
+                        "api_cons_miss": db_api_cons_miss,
                     }
                     database_handler.write_epoch_data(database_path, insert_data)
                 elif database_handler.check_if_epoch_is_recorded(
@@ -482,6 +594,7 @@ async def main() -> None:
                         "small_balance_alert_executed": prev_small_bal_alert,
                         "very_small_balance_alert_executed": prev_very_small_bal_alert,
                         "consecutive_misses": prev_consecutive_misses,
+                        "api_cons_miss": 0,
                     }
                     database_handler.write_epoch_data(database_path, insert_data)
                      # Process alerts

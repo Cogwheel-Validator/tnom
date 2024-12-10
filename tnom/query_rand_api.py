@@ -12,7 +12,7 @@ import utility
 
 async def collect_data_from_random_healthy_api(
     healthy_apis: list[str],
-    config_yml: dict[str, Any]) -> dict[str, Any]:
+    config_yml: dict[str, Any]) -> dict[str, Any] | None:
     """Collects data from a randomly chosen healthy API.
 
     Args:
@@ -20,9 +20,15 @@ async def collect_data_from_random_healthy_api(
         config_yml (dict[str, Any]): The loaded configuration from the YAML file.
 
     Returns:
-        dict[str, Any]: A dictionary containing all the collected data.
+        dict[str, Any]: A dictionary containing all the collected data. Returns
+        False if no healthy APIs are found.
 
     """
+    if not healthy_apis:
+        logging.error("""No healthy APIs found! \n
+                      Check your config file or is the chain halted.""")
+        # retrun False or an empty list
+        return False
     async with aiohttp.ClientSession() as session:
         # select API
         random_healthy_api = (random.choice(healthy_apis))  # noqa: S311
@@ -73,6 +79,7 @@ async def collect_data_from_random_healthy_api(
 
         # create epoch
         current_block_height, _ = latest_block_result
+        current_epoch : int = utility.create_epoch(current_block_height, collect_slash_window)
         current_epoch : int = utility.create_epoch(
                 current_block_height, collect_slash_window)
 

@@ -47,9 +47,9 @@ async def telegram_alert_trigger(
     try:
         bot = Bot(telegram_bot_token)
         # Convert alert details to string
-        details_to_str = "```\n" + yaml.dump( # turn dict into yaml and dump it?
+        details_to_str = yaml.dump( # turn dict into yaml and dump it?
             # Future note: look for some better solution later
-            alert_details, default_flow_style=False) + "\n```"
+            alert_details, default_flow_style=False)
         return await bot.send_message(chat_id=chat_id, text=details_to_str)
     except Exception as e:
         if isinstance(e, (telegram.error.TelegramError, telegram.error.NetworkError)):

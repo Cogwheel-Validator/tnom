@@ -287,12 +287,25 @@ class MonitoringSystem:
                     alert["details"],
                     self.alert_yml["telegram_chat_id"],
                 )
+
     async def process_api_not_working(
         self,
         epoch: int,
         *,
         no_healthy_apis: bool = True) -> None:
+        """Process no healthy APIs alert.
 
+        This function processes alert for no healthy APIs. If no_healthy_apis is True,
+        it increments the counter of consecutive misses of APIs and sends a warning
+        log message. If no_healthy_apis is False, it checks if the counter of
+        consecutive misses is above the threshold and sends a recovery alert if it
+        is. Then it resets the counter and the alert flag.
+
+        Args:
+            epoch (int): The epoch number.
+            no_healthy_apis (bool): If no healthy APIs are present. Defaults to True.
+
+        """
         if self.last_alert_epoch != epoch:
             self.reset_for_new_epoch()
             self.last_alert_epoch = epoch
@@ -404,7 +417,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="v0.4.1",
+        version="v0.4.2",
     )
 
     return parser

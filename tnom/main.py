@@ -289,23 +289,23 @@ class MonitoringSystem:
                 )
     async def process_api_not_working(
         self,
-        epoch:int,
+        epoch: int,
         *,
-        no_healthy_apis : bool = True) -> None:
+        no_healthy_apis: bool = True) -> None:
 
         if self.last_alert_epoch != epoch:
             self.reset_for_new_epoch()
             self.last_alert_epoch = epoch
 
-        api_consecutive_misses : int = self.api_consecutive_misses
+        api_consecutive_misses = self.api_consecutive_misses
         if no_healthy_apis is True:
             api_consecutive_misses += 1
+            logging.warning("Warning API not working for %s times!",
+                            api_consecutive_misses)
         elif no_healthy_apis is False:
-            self.alert_sent["healthy_api_missing"] = False
-            # if the API was not working properlly for more than 3 minutes and
-            # it started working again it should send an info alert that
-            # everything is back to normal
-            if self.api_consecutive_misses >= API_CONS_MISS_THRESHOLD:
+            # Check if we need to send recovery alert
+            if (self.api_consecutive_misses >= API_CONS_MISS_THRESHOLD
+                and self.alert_sent["healthy_api_missing"] is True):
                 summary = "Alert: API working again!"
                 level = "info"
                 alert_details = {
@@ -325,10 +325,13 @@ class MonitoringSystem:
                         alert_details,
                         self.alert_yml["telegram_chat_id"],
                     )
+            # Reset counter and alert flag after sending recovery alert
             api_consecutive_misses = 0
+            self.alert_sent["healthy_api_missing"] = False
 
         self.api_consecutive_misses = api_consecutive_misses
 
+        # Send alert for API down
         if (api_consecutive_misses >= API_CONS_MISS_THRESHOLD and
             not self.alert_sent["healthy_api_missing"]):
                 summary = "Alert: API not working!"
@@ -352,6 +355,8 @@ class MonitoringSystem:
                     )
                 self.alert_sent["healthy_api_missing"] = True
 
+        # Store data in the database
+        # TO DO decide if this will be needed in the upcoming versions
         database_handler.overwrite_single_field(
             self.database_path,
             epoch,
@@ -470,17 +475,21 @@ async def main() -> None:
         while True:
             try:
                 # Step three - check APIs
+                latest_epoch = (
+                        database_handler.read_last_recorded_epoch(database_path))
                 healthy_apis = await check_apis(config_yml)
                 while not healthy_apis:
                     logging.error("Failed to check APIs")
-                    latest_epoch = (
-                        database_handler.read_last_recorded_epoch(database_path))
                     await monitoring_system.process_api_not_working(
                         latest_epoch, no_healthy_apis=True)
                     # stop the script here and start from while True again until there
                     # is a healthy api
                     await asyncio.sleep(config_yml.get("monitoring_interval", 60))
                     healthy_apis = await check_apis(config_yml)
+                # this is needed to revert the consecutive_misses counter
+                if healthy_apis:
+                    await monitoring_system.process_api_not_working(
+                        latest_epoch, no_healthy_apis=False)
 
                 # Step four - Make query with random healthy API
                 query_results = await query_rand_api.collect_data_from_random_healthy_api(  # noqa: E501

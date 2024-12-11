@@ -1,7 +1,13 @@
 # Enable which alerts you wants to use. You can use both telegram and pagerduty
 # at the same time or only one of them.
-telegram_alerts: false # Set to true if you want to enable telegram alerts 
-pagerduty_alerts: false # Set to true if you want to enable pagerduty alerts
+telegram_alerts: true # Set to true if you want to enable telegram alerts 
+
+pagerduty_alerts: true # Set to true if you want to enable pagerduty alerts
+
+# This is totally optional. You do not need to use it if you do now want to.
+health_check_enabled: true # Set to true if you want to enable health check
+
+prometheus_client_enabled: true # Set to true if you want to enable prometheus
 
 # Telegram
 telegram_bot_token: "your_telegram_bot_token"
@@ -11,7 +17,9 @@ telegram_chat_id: "your_telegram_chat_id"
 pagerduty_routing_key: "your_pagerduty_routing_key"
 
 # Health check
-# This is totally optional. You do not need to use it if you do now want to.
-health_check_enabled: false # Set to true if you want to enable health check
 health_check_url: "https://hc-ping.com/1234567890abcdef"
 health_check_interval: 180
+
+# Prometheus
+prometheus_host: "127.0.0.1" # or "0.0.0.0" if you need open access
+prometheus_port: "7125" # you can set to which ever port is open

@@ -10,7 +10,8 @@ And two functions to set up FastAPI:
     - create_prometheus_client: Create and return a FastAPI app with Prometheus metrics.
     - start_metrics_server: Start the Prometheus metrics server.
 """
-
+import asyncio
+import logging
 from pathlib import Path
 
 import hypercorn.asyncio
@@ -144,7 +145,12 @@ def create_prometheus_client(metrics: PrometheusMetrics) -> FastAPI:
         FastAPI: A FastAPI application with Prometheus metrics endpoint mounted.
 
     """
-    app = FastAPI()
+    app = FastAPI(
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None, # no need for documentation since API
+        #is only used to communicate with Prometheus
+    )
     metrics.update_metrics()
     metrics_app = make_asgi_app()
     app.mount ("/metrics", metrics_app)
@@ -154,6 +160,7 @@ async def start_metrics_server(
     metrics: PrometheusMetrics,
     prometheus_host: str,
     prometheus_port: int,
+    shutdown_event: asyncio.Event,
 ) -> None:
     """Start the Prometheus metrics server.
 
@@ -166,6 +173,11 @@ async def start_metrics_server(
         metrics (PrometheusMetrics): The metrics object to collect metrics from.
         prometheus_port (int): The port to listen on.
         prometheus_host (str): The hostname to listen on.
+        shutdown_event (asyncio.Event): An event to notify when the server
+            should shutdown.
+
+    Returns:
+        None
 
     """
     config = hypercorn.config.Config()
@@ -179,4 +191,24 @@ async def start_metrics_server(
     config.shutdown_timeout = 10
 
     app = create_prometheus_client(metrics)
-    await hypercorn.asyncio.serve(app, config, mode="asgi")
+    async def shutdown_trigger() -> None:
+        """Wait for the shutdown event to be set.
+
+        This function waits asynchronously for the `shutdown_event` to be set,
+        indicating that the server should shut down.
+
+        """
+        await shutdown_event.wait()
+
+    try:
+        await hypercorn.asyncio.serve(
+            app,
+            config,
+            mode="asgi",
+            shutdown_trigger=shutdown_trigger)
+    except asyncio.CancelledError:
+        logging.info("Prometheus server task cancelled.")
+        # Hypercorn's serve function doesn't automatically clean up
+        # Make sure to release resources if necessary here.
+    finally:
+        logging.info("Prometheus server shutting down.")

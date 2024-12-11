@@ -8,6 +8,7 @@ import alerts
 import config_load
 import database_handler
 import dead_man_switch
+import prometheus_client_endpoint as prom
 import query_rand_api
 from check_apis import check_apis
 from set_up_db import init_and_check_db
@@ -647,7 +648,14 @@ async def main() -> None:
 
     if alert_yml["health_check_enabled"]:
         tasks.append(health_check_task())
-
+    if alert_yml["prometheus_client_enabled"] is True:
+        # acquire latest epoch data
+        latest_epoch :int = database_handler.read_last_recorded_epoch(database_path)
+        prometheus = prom.PrometheusMetrics(database_path, latest_epoch)
+        prometheus_host = alert_yml["prometheus_host"]
+        prometheus_port = alert_yml["prometheus_port"]
+        tasks.append(
+            prom.start_metrics_server(prometheus, prometheus_host, prometheus_port))
     try:
         await asyncio.gather(*tasks, return_exceptions=True)
     except KeyboardInterrupt:

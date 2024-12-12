@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import signal
 import sys
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import alerts
 import config_load
 import database_handler
 import dead_man_switch
+import prometheus_client_endpoint as prom
 import query_rand_api
 from check_apis import check_apis
 from set_up_db import init_and_check_db
@@ -15,8 +17,8 @@ from set_up_db import init_and_check_db
 ONE_NIBI = 1000000
 ZERO_PT_ONE = 100000
 CONSECUTIVE_MISSES_THRESHOLD = 3
-TOTAL_MISSES_THRESHOLD = 10
-CRITICAL_MISSES_THRESHOLD = 20
+P2_UNSIGNED_EV_THR = 10
+P1_UNSIGNED_EV_THR = 20
 API_CONS_MISS_THRESHOLD = 3
 
 class MonitoringSystem:
@@ -238,7 +240,7 @@ class MonitoringSystem:
             self.alert_sent["consecutive"] = True
 
         # Check total misses
-        if total_misses >= TOTAL_MISSES_THRESHOLD and not self.alert_sent["total"]:
+        if total_misses >= P2_UNSIGNED_EV_THR and not self.alert_sent["total"]:
             alerts_to_send.append({
                 "details": {
                     "total_misses": total_misses,
@@ -251,7 +253,7 @@ class MonitoringSystem:
             self.alert_sent["total"] = True
 
         # Check critical threshold
-        if (total_misses >= CRITICAL_MISSES_THRESHOLD
+        if (total_misses >= P1_UNSIGNED_EV_THR
             and not self.alert_sent["critical"]):
             alerts_to_send.append({
                 "details": {
@@ -380,7 +382,7 @@ class MonitoringSystem:
 def setup_argument_parser() -> argparse.ArgumentParser:
     """Set up and return the argument parser with all arguments configured."""
     parser = argparse.ArgumentParser(
-        description="Monitoring system for price feeds and wallet balances",
+        description="Monitoring tool for tracking Nibiru oracle price feeder.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
@@ -388,7 +390,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     working_dir = Path.cwd()
 
     parser.add_argument(
-        "--working-dir",  # Changed from working_dir to working-dir for consistency
+        "--working-dir",
         type=str,
         help="The working directory for config files and database\n"
              "Default: current working directory",
@@ -417,7 +419,25 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="v0.4.2",
+        version="v0.5.0",
+    )
+
+    parser.add_argument(
+            "--prometheus-host",
+            type=str,
+            help="Prometheus host to run on\n"
+                "Overrides host in alert config file\n"
+                "Default: 127.0.0.1 if not specified in config",
+            required=False,
+    )
+
+    parser.add_argument(
+        "--prometheus-port",
+        type=int,
+        help="Prometheus port to run on\n"
+             "Overrides port in alert config file\n"
+             "Default: 7130 if not specified in config",
+        required=False,
     )
 
     return parser
@@ -470,10 +490,42 @@ async def main() -> None:
         logging.error("No alerts are enabled! Please enable at least one alert system.")
         sys.exit(1)
 
+    # Determine Prometheus host and port
+    prometheus_host : str = (args.prometheus_host
+                       or alert_yml.get("prometheus_host"))
+    prometheus_port : int = (args.prometheus_port
+                       or alert_yml.get("prometheus_port"))
+
     monitoring_system = MonitoringSystem(config_yml, alert_yml, database_path)
 
-    # Create event loop
-    loop = asyncio.get_event_loop()
+    shutdown_event = asyncio.Event()
+
+    async def graceful_shutdown(tasks: list) -> None:
+        """Perform a more controlled shutdown of tasks.
+
+        Args:
+            tasks (list): List of running tasks to shut down
+
+        """
+        if not tasks:
+            return
+
+        # First, cancel all tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+        # Wait for tasks to complete, but with a timeout
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=10.0,
+                # Set timeout to 10 secounds, maybe set to 60 in the future?
+            )
+        except asyncio.TimeoutError:
+            logging.warning("Some tasks did not shut down within the timeout.")
+        except Exception as e:
+            logging.exception("Error during shutdown: %s", e)
 
     async def monitoring_loop() -> None:
         """The main loop of the monitoring system.
@@ -485,138 +537,145 @@ async def main() -> None:
         If an exception is raised, the loop will log the exception and sleep for
         10 seconds before continuing.
         """
-        while True:
-            try:
-                # Step three - check APIs
-                latest_epoch = (
-                        database_handler.read_last_recorded_epoch(database_path))
-                healthy_apis = await check_apis(config_yml)
-                while not healthy_apis:
-                    logging.error("Failed to check APIs")
-                    await monitoring_system.process_api_not_working(
-                        latest_epoch, no_healthy_apis=True)
-                    # stop the script here and start from while True again until there
-                    # is a healthy api
-                    await asyncio.sleep(config_yml.get("monitoring_interval", 60))
+        try:
+            while True:
+                try:
+                    # Step three - check APIs
+                    latest_epoch = (
+                            database_handler.read_last_recorded_epoch(database_path))
                     healthy_apis = await check_apis(config_yml)
-                # this is needed to revert the consecutive_misses counter
-                if healthy_apis:
-                    await monitoring_system.process_api_not_working(
-                        latest_epoch, no_healthy_apis=False)
+                    while not healthy_apis:
+                        logging.error("Failed to check APIs")
+                        await monitoring_system.process_api_not_working(
+                            latest_epoch, no_healthy_apis=True)
+                        # stop the script here and start from while True again until there
+                        # is a healthy api
+                        await asyncio.sleep(config_yml.get("monitoring_interval", 60))
+                        healthy_apis = await check_apis(config_yml)
+                    # this is needed to revert the consecutive_misses counter
+                    if healthy_apis:
+                        await monitoring_system.process_api_not_working(
+                            latest_epoch, no_healthy_apis=False)
 
-                # Step four - Make query with random healthy API
-                query_results = await query_rand_api.collect_data_from_random_healthy_api(  # noqa: E501
-                    healthy_apis, config_yml)
+                    # Step four - Make query with random healthy API
+                    query_results = await query_rand_api.collect_data_from_random_healthy_api(  # noqa: E501
+                        healthy_apis, config_yml)
 
-                # Process query data
-                query_data = {
-                    "miss_counter": query_results["miss_counter"],
-                    "check_for_aggregate_votes": query_results["check_for_aggregate_votes"],  # noqa: E501
-                    "current_epoch": query_results["current_epoch"],
-                    "wallet_balance": query_results["wallet_balance"],
-                }
-                # Step five - Write data to database
-                # Check if the current_epoch exists in the database
-                if database_handler.check_if_epoch_is_recorded(
-                    database_path, query_data["current_epoch"]):
-                    logging.info("Writing data in the existing epoch")
-                    # Step 5.2a - Update the existing db with data
-
-                    # read current epoch data
-                    read_crw_data: dict = database_handler.read_current_epoch_data(
-                        database_path, query_data["current_epoch"])
-                    db_unsigned_or_ev: int = read_crw_data["unsigned_oracle_events"]
-                    db_small_bal_alert: int = (
-                        read_crw_data["small_balance_alert_executed"])
-                    db_very_small_bal_alert: int = (
-                        read_crw_data["very_small_balance_alert_executed"])
-                    db_consecutive_misses: int = read_crw_data["consecutive_misses"]
-                    db_miss_counter_p1_executed : int = read_crw_data[
-                        "miss_counter_p1_executed"]
-                    db_miss_counter_p2_executed : int = read_crw_data[
-                        "miss_counter_p2_executed"]
-                    db_miss_counter_p3_executed : int = read_crw_data[
-                        "miss_counter_p3_executed"]
-                    db_api_cons_miss : int = read_crw_data["api_cons_miss"]
-                    # if the check failed the return should be false adding +1 to not
-                    # signing events
-                    if query_data["check_for_aggregate_votes"] is False:
-                        db_unsigned_or_ev += 1
-                        logging.info(f"Incrementing unsigned events to: {db_unsigned_or_ev}")
-                    insert_data: dict[int] = {
-                        "slash_epoch": query_data["current_epoch"],
-                        "miss_counter_events": query_data["miss_counter"],
-                        "miss_counter_p1_executed": db_miss_counter_p1_executed,
-                        "miss_counter_p2_executed": db_miss_counter_p2_executed,
-                        "miss_counter_p3_executed": db_miss_counter_p3_executed,
-                        "unsigned_oracle_events": db_unsigned_or_ev,
-                        "price_feed_addr_balance": query_data["wallet_balance"],
-                        "small_balance_alert_executed": db_small_bal_alert,
-                        "very_small_balance_alert_executed": db_very_small_bal_alert,
-                        "consecutive_misses": db_consecutive_misses,
-                        "api_cons_miss": db_api_cons_miss,
+                    # Process query data
+                    query_data = {
+                        "miss_counter": query_results["miss_counter"],
+                        "check_for_aggregate_votes": query_results["check_for_aggregate_votes"],  # noqa: E501
+                        "current_epoch": query_results["current_epoch"],
+                        "wallet_balance": query_results["wallet_balance"],
                     }
-                    database_handler.write_epoch_data(database_path, insert_data)
-                elif database_handler.check_if_epoch_is_recorded(
-                    database_path, query_data["current_epoch"]) is False:
-                    logging.info("Writing data in a new epoch")
-                    # Step 5.2b if no db, no current epoch entered or just starting for
-                    # first time
-
-                    # make the new entry in the db
-
-                    # check if there is a previous entry
+                    # Step five - Write data to database
+                    # Check if the current_epoch exists in the database
                     if database_handler.check_if_epoch_is_recorded(
-                    database_path, query_data["current_epoch"] - 1):
-                        read_prev_crw_data : dict = database_handler.read_current_epoch_data(  # noqa: E501
-                            database_path, query_data["current_epoch"] - 1)
-                        if (read_prev_crw_data["slash_epoch"]
-                            == query_data["current_epoch"] - 1):
-                            prev_small_bal_alert: int = read_prev_crw_data[
-                                "small_balance_alert_executed"]
-                            prev_very_small_bal_alert: int = read_prev_crw_data[
-                                "very_small_balance_alert_executed"]
-                            prev_consecutive_misses: int = read_prev_crw_data[
-                                "consecutive_misses"]
-                    elif database_handler.check_if_epoch_is_recorded(
-                        database_path, query_data["current_epoch"] - 1) is False:
-                        prev_small_bal_alert = 0
-                        prev_very_small_bal_alert = 0
-                        prev_consecutive_misses = 0
-                    insert_data: dict[int] = {
-                        "slash_epoch": query_data["current_epoch"],
-                        "miss_counter_events": query_data["miss_counter"],
-                        "miss_counter_p1_executed": 0,
-                        "miss_counter_p2_executed": 0,
-                        "miss_counter_p3_executed": 0,
-                        "unsigned_oracle_events": 0,
-                        "price_feed_addr_balance": query_data["wallet_balance"],
-                        "small_balance_alert_executed": prev_small_bal_alert,
-                        "very_small_balance_alert_executed": prev_very_small_bal_alert,
-                        "consecutive_misses": prev_consecutive_misses,
-                        "api_cons_miss": 0,
-                    }
-                    database_handler.write_epoch_data(database_path, insert_data)
-                     # Process alerts
-                await monitoring_system.process_balance_alerts(query_data, insert_data)
-                await monitoring_system.process_signing_alerts(
-                    query_data["current_epoch"],
-                    query_data,
-                    insert_data["unsigned_oracle_events"],
-                )
-                await monitoring_system.process_miss_parameter_alerts(
-                    query_data, insert_data,
-                )
+                        database_path, query_data["current_epoch"]):
+                        logging.info("Writing data in the existing epoch")
+                        # Step 5.2a - Update the existing db with data
 
-                # Sleep for interval
-                await asyncio.sleep(config_yml.get("monitoring_interval", 60))
-            except asyncio.CancelledError: # noqa: PERF203
-                logging.info("Monitoring loop cancelled.")
-                raise
-            except Exception as e:
-                logging.exception("Error in monitoring loop: %s", e)  # noqa: TRY401
-                await asyncio.sleep(10)
-                # To do reaserch RuffPERF203
+                        # read current epoch data
+                        read_crw_data: dict = database_handler.read_current_epoch_data(
+                            database_path, query_data["current_epoch"])
+                        db_unsigned_or_ev: int = read_crw_data["unsigned_oracle_events"]
+                        db_small_bal_alert: int = (
+                            read_crw_data["small_balance_alert_executed"])
+                        db_very_small_bal_alert: int = (
+                            read_crw_data["very_small_balance_alert_executed"])
+                        db_consecutive_misses: int = read_crw_data["consecutive_misses"]
+                        db_miss_counter_p1_executed : int = read_crw_data[
+                            "miss_counter_p1_executed"]
+                        db_miss_counter_p2_executed : int = read_crw_data[
+                            "miss_counter_p2_executed"]
+                        db_miss_counter_p3_executed : int = read_crw_data[
+                            "miss_counter_p3_executed"]
+                        db_api_cons_miss : int = read_crw_data["api_cons_miss"]
+                        # if the check failed the return should be false adding +1 to not
+                        # signing events
+                        if query_data["check_for_aggregate_votes"] is False:
+                            db_unsigned_or_ev += 1
+                            logging.info(f"Incrementing unsigned events to: {db_unsigned_or_ev}")
+                        insert_data: dict[int] = {
+                            "slash_epoch": query_data["current_epoch"],
+                            "miss_counter_events": query_data["miss_counter"],
+                            "miss_counter_p1_executed": db_miss_counter_p1_executed,
+                            "miss_counter_p2_executed": db_miss_counter_p2_executed,
+                            "miss_counter_p3_executed": db_miss_counter_p3_executed,
+                            "unsigned_oracle_events": db_unsigned_or_ev,
+                            "price_feed_addr_balance": query_data["wallet_balance"],
+                            "small_balance_alert_executed": db_small_bal_alert,
+                            "very_small_balance_alert_executed": db_very_small_bal_alert,
+                            "consecutive_misses": db_consecutive_misses,
+                            "api_cons_miss": db_api_cons_miss,
+                        }
+                        database_handler.write_epoch_data(database_path, insert_data)
+                    elif database_handler.check_if_epoch_is_recorded(
+                        database_path, query_data["current_epoch"]) is False:
+                        logging.info("Writing data in a new epoch")
+                        # Step 5.2b if no db, no current epoch entered or just starting for
+                        # first time
+
+                        # make the new entry in the db
+
+                        # check if there is a previous entry
+                        if database_handler.check_if_epoch_is_recorded(
+                        database_path, query_data["current_epoch"] - 1):
+                            read_prev_crw_data : dict = database_handler.read_current_epoch_data(  # noqa: E501
+                                database_path, query_data["current_epoch"] - 1)
+                            if (read_prev_crw_data["slash_epoch"]
+                                == query_data["current_epoch"] - 1):
+                                prev_small_bal_alert: int = read_prev_crw_data[
+                                    "small_balance_alert_executed"]
+                                prev_very_small_bal_alert: int = read_prev_crw_data[
+                                    "very_small_balance_alert_executed"]
+                                prev_consecutive_misses: int = read_prev_crw_data[
+                                    "consecutive_misses"]
+                        elif database_handler.check_if_epoch_is_recorded(
+                            database_path, query_data["current_epoch"] - 1) is False:
+                            prev_small_bal_alert = 0
+                            prev_very_small_bal_alert = 0
+                            prev_consecutive_misses = 0
+                        insert_data: dict[int] = {
+                            "slash_epoch": query_data["current_epoch"],
+                            "miss_counter_events": query_data["miss_counter"],
+                            "miss_counter_p1_executed": 0,
+                            "miss_counter_p2_executed": 0,
+                            "miss_counter_p3_executed": 0,
+                            "unsigned_oracle_events": 0,
+                            "price_feed_addr_balance": query_data["wallet_balance"],
+                            "small_balance_alert_executed": prev_small_bal_alert,
+                            "very_small_balance_alert_executed": prev_very_small_bal_alert,
+                            "consecutive_misses": prev_consecutive_misses,
+                            "api_cons_miss": 0,
+                        }
+                        database_handler.write_epoch_data(database_path, insert_data)
+                    # Process alerts
+                    await monitoring_system.process_balance_alerts(query_data, insert_data)
+                    await monitoring_system.process_signing_alerts(
+                        query_data["current_epoch"],
+                        query_data,
+                        insert_data["unsigned_oracle_events"],
+                    )
+                    await monitoring_system.process_miss_parameter_alerts(
+                        query_data, insert_data,
+                    )
+                    # Check for shutdown between major operations
+                    if shutdown_event.is_set():
+                        break
+                    # Sleep for interval
+                    await asyncio.sleep(config_yml.get("monitoring_interval", 60))
+                except Exception as e:
+                    if not shutdown_event.is_set():
+                        logging.exception("Error in monitoring loop: %s", e)
+                        await asyncio.sleep(10)
+                    else:
+                        break
+        except asyncio.CancelledError:
+            logging.info("Monitoring loop cancelled.")
+        finally:
+            logging.info("Monitoring loop shutting down gracefully.")
+                    # To do reaserch RuffPERF203
 
     async def health_check_task() -> None:
         """Runs the health check task asynchronously.
@@ -630,39 +689,67 @@ async def main() -> None:
 
         """
         try:
-            await asyncio.to_thread(
-                dead_man_switch.run_health_check,
-                alert_yml["health_check_url"],
-                alert_yml["health_check_interval"],
-                None,
-            ) if alert_yml["health_check_enabled"] else None
+            if alert_yml["health_check_enabled"]:
+                await dead_man_switch.run_health_check(
+                    alert_yml["health_check_url"],
+                    alert_yml["health_check_interval"],
+                    None,
+                    shutdown_event,
+                )
         except asyncio.CancelledError:
             logging.info("Health check task cancelled.")
-            raise
+        finally:
+            logging.info("Health check task shutting down gracefully.")
 
-    # Run monitoring and health check concurrently
-    tasks = [
-        monitoring_loop(),
-    ]
+    # Create a single shutdown handler
+    def handle_shutdown() -> None:
+        """Shutdown signal handler.
 
-    if alert_yml["health_check_enabled"]:
-        tasks.append(health_check_task())
+        Set the shutdown event when a shutdown signal is received,
+        unless the event is already set.
+        """
+        if not shutdown_event.is_set():
+            logging.info("Shutdown signal received. Stopping tasks...")
+            shutdown_event.set()
 
+    # Setup signal handlers
+    loop = asyncio.get_event_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, handle_shutdown)
+
+    # Prepare tasks
+    tasks = []
     try:
-        await asyncio.gather(*tasks, return_exceptions=True)
-    except KeyboardInterrupt:
-        logging.info("Interrupt received, shutting down...")
-    finally:
-        # Cancel all tasks
-        for task in asyncio.all_tasks():
-            if task is not asyncio.current_task():
-                task.cancel()
-        loop.close()
+        # Create tasks
+        monitoring_task = asyncio.create_task(monitoring_loop())
+        tasks.append(monitoring_task)
 
-        # Wait for all tasks to be cancelled
-        await asyncio.gather(*asyncio.all_tasks(), return_exceptions=True)
-        logging.info("All tasks cancelled successfully.")
-        # TO do fix task cancelation
+        if alert_yml["health_check_enabled"]:
+            health_check_task_obj = asyncio.create_task(health_check_task())
+            tasks.append(health_check_task_obj)
+
+        if alert_yml["prometheus_client_enabled"]:
+            latest_epoch = database_handler.read_last_recorded_epoch(database_path)
+            prometheus = prom.PrometheusMetrics(database_path, latest_epoch)
+            prometheus_task = asyncio.create_task(
+                prom.start_metrics_server(
+                    prometheus,
+                    prometheus_host,
+                    prometheus_port,
+                    shutdown_event,
+                ),
+            )
+            tasks.append(prometheus_task)
+
+        # Wait for tasks or shutdown
+        await shutdown_event.wait()
+
+    except Exception as e:
+        logging.exception("Unexpected error: %s", e)
+    finally:
+        # Perform graceful shutdown
+        await graceful_shutdown(tasks)
+        logging.info("All tasks stopped successfully.")
 
 if __name__ == "__main__":
     try:

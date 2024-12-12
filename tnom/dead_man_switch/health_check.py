@@ -12,33 +12,43 @@ Usage:
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
-import time
+from http import HTTPStatus
 
-import requests
-import schedule
+import aiohttp
 
 
-def dead_man_switch_trigger(dead_man_switch_url: str) -> None:
-    """Triggers a dead man switch at the given URL.
+async def dead_man_switch_trigger(url: str) -> None:
+    """Async function to trigger dead man switch.
 
     Args:
-        dead_man_switch_url (str): The URL of the dead man switch to trigger.
+        url (str): The URL to trigger the dead man switch.
 
     Returns:
         None
 
     """
     try:
-        requests.head(dead_man_switch_url, timeout=1)
-    except requests.RequestException:
-        logging.exception("Failed to trigger dead man switch.")
+        async with (aiohttp.ClientSession() as session,
+                    session.get(url, timeout=10) as response):
+                if response.status == HTTPStatus.OK:
+                    logging.info("Health check ping successful.")
+                else:
+                    logging.warning(
+                        "Health check ping failed. Status code: %s", response.status)
+    except Exception as e:
+        logging.exception("Error in health check ping: %s", e)  # noqa: TRY401
 
-# TO DO TEST THIS FUNC OUT
-def run_health_check(
+
+
+async def run_health_check(
     dead_man_switch_url: str,
     interval: int,
-    max_iterations: int | None) -> None:
+    max_iterations: int | None,
+    shutdown_event: asyncio.Event,
+    ) -> None:
     """Triggers a dead man switch at the given URL at regular intervals.
 
     Args:
@@ -46,6 +56,8 @@ def run_health_check(
         interval (int): The interval in seconds between each dead man switch trigger.
         max_iterations (int | None): The maximum number of iterations. If None,
         the loop will run indefinitely.
+        shutdown_event (asyncio.Event): The event to signal when the loop should
+        stop.
 
     Returns:
         None
@@ -65,13 +77,28 @@ def run_health_check(
         msg = "interval must be greater than zero"
         raise ValueError(msg)
 
-    schedule.every(interval).seconds.do(dead_man_switch_trigger, dead_man_switch_url)
-
     iteration = 0
-    while max_iterations is None or iteration < max_iterations:
-        schedule.run_pending()
-        time.sleep(1.0)
-        iteration += 1
+    try:
+        while not shutdown_event.is_set():
+            # Check for max iterations if specified
+            if max_iterations is not None and iteration >= max_iterations:
+                break
 
-    # Clear the scheduled job when done
-    schedule.clear()
+            # Trigger health check
+            await dead_man_switch_trigger(dead_man_switch_url)
+
+            # Wait for the interval or until shutdown is signaled
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(
+                    shutdown_event.wait(),
+                    timeout=interval,
+                )
+
+            iteration += 1
+
+    except asyncio.CancelledError:
+        logging.info("Health check task was cancelled.")
+    except Exception as e:
+        logging.exception("Error in health check: %s", e)  # noqa: TRY401
+    finally:
+        logging.info("Health check task shutting down.")

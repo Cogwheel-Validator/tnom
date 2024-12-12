@@ -27,3 +27,5 @@ USER pythonuser
 
 # Specify everything just in case
 CMD ["python", "/app/tnom/main.py", "--working-dir", "/app", "--config-path", "/app/config/config.yml", "--alert-path", "/app/config/alert.yml"]
+
+EXPOSE 7130

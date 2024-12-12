@@ -7,27 +7,35 @@ script can be compiled using Nuitka.
 
 ## Table of Contents
 
-- [TNOM - The Nibiru Oracle Monitor](#tnom---the-nibiru-oracle-monitor)
 - [How does the TNOM work?](#how-does-the-tnom-work)
 - [Installation](#installation)
 - [Requirements](#requirements)
 - [Set up config](#set-up-config)
-- [Run the script](#run-the-script)
-- [Deploy the script](#deploy-the-script)
+- [How to run the script](#how-to-run-the-script)
+- [Deployment options](#deployment-options)
+
 
 
 # How does the TNOM work?
 
-TNOM is a monitoring tool. It collects data from Nibiru's REST APIs. The data is then
-stored in the local SQLite database. It then checks if the data is within the expected
-range. For example, if a certain amount of unsigned events from oracle happens, or if the
-wallet balance is below a certain amount. If the data is not within the expected range,
-TNOM alerts the user. Currently, it only supports Pagerduty and Telegram as the
-means of sending alerts. It also supports health checks if the script or your server halts.
+TNOM is a monitoring tool that collects data related to Nibiru's Oracle price feeder.
+The data is queried from the Nibiru REST API and stored in a SQLite database.
+If some parameters are out of the expected range, TNOM alerts the user, by Pagerduty
+or Telegram.
+As an addition features it has a dead man switch that can be triggered if the 
+monitoring tool stops working.
+At the moment there is also a prometheus endpoint which can be used to send metrics
+from the SQLite database to Grafana or maybe you want to make your own alerting 
+system.
 
-TNOM can be run directly using Python, or you can compile the code using Nuitka. 
-The compiled version is somewhat faster but the con is that it might take a while
-to build it. You can also download the compiled version.
+It checks for the following parameters:
+- wallet balance (alerts if it has less then 1 NIBI and there is also critical alerts 
+if it has less than 0.1 NIBI)
+- number of unsigned events (alerts if there were more than 10 events and another 
+after 20, there is also an alert if there were consecutive 3 misses)
+- number of miss events* (this parameter was not tested yet and I think it is related 
+when price feeder gives to low/high price)
+- if all APIs are available ( if not it will send an alert)
 
 # Installation
 
@@ -41,6 +49,24 @@ use Python directly and run it like that, build the script using Nuitka, or down
 the compiled version.
 
 ## Requirements
+
+Hardware and Operating System Requirements:
+
+- CPU Arch: AMD64, ARM 64-bit* (ARM should also work but it is not tested)
+- OS: Linux ( Tested on Rocky Linux 9, Ubuntu 24.01 and Debian 12, but it should run 
+on any Linux distro, in theory script should also run on MacOS but it is not tested)
+
+Minimum Requirements:
+
+- CPU Core: At least 2 cores (recommended to run script directly or precompiled TNOM)
+- RAM: At least 1-2 GB (recommended to run script directly or precompiled TNOM)
+
+Recommended Requirements:
+
+- CPU Core: At least 4 cores
+- RAM: At least 4 GB
+
+Software Requirements:
 
 - Python 3.11 or higher
 - All of the requirements in the requirements.txt file
@@ -102,10 +128,10 @@ vim config.yml # or nano config.yml
 ```
 
 The alert config is a yml file that stores the alert details. It requires to have
-Pagerduty or Telegram details. You can also use both options if you desire. Another
-feature is a dead man switch. This feature will send an alert if the script
-does not run for a while. It is not required, but it is recommended.
-Check the alert_example.yml for an example.
+Pagerduty or Telegram details. You can also use both options if you desire. 
+Some additional features are dead man switch and prometheus metrics endpoint.
+Dead man switch is a feature that can be triggered if the monitoring tool stops
+working. It is not a requriement but it is recommended to set it up.
 
 ```bash
 cp alert_example.yml alert.yml
@@ -114,9 +140,10 @@ vim alert.yml # or nano alert.yml
 
 For alert to work you will need at least a Telegram bot and chat ID, and for Pagerduty 
 you will need a routing key from Events API v2. The alerts have multiple severity
-levels so you can set dynamic notifications. Setting up telegram, pagerduty and health
-check is out of the scope of this guide. If there are many interested people, I might
-create a guide on how to set them up. Some links to get you started:
+levels so you can set dynamic notifications. For the dead man switch you need to get
+link to your health check endpoint. Setting up telegram, pagerduty and health
+check is out of the scope of this guide. If there are many interested people, this 
+section could be expanded a bit on that topic.Some links to get you started:
 
 - [PagerDuty](https://developer.pagerduty.com/docs/3d063fd4814a6-events-api-v2-overview)
 - [Telegram](https://core.telegram.org/bots/tutorial)
@@ -143,9 +170,11 @@ You can print help if you feel stuck.
 poetry run python tnom/main.py -h # or python tnom/main.py --help 
 # or build/tnom -h if you built executable binary
 usage: main.py [-h] [--working-dir WORKING_DIR] [--config-path CONFIG_PATH]
- [--alert-path ALERT_PATH] [--version]
+               [--alert-path ALERT_PATH] [--version]
+               [--prometheus-host PROMETHEUS_HOST]
+               [--prometheus-port PROMETHEUS_PORT]
 
-Monitoring system for price feeds and wallet balances
+Monitoring tool for tracking Nibiru Oracle
 
 options:
   -h, --help            show this help message and exit
@@ -154,27 +183,35 @@ options:
                         Default: current working directory
   --config-path CONFIG_PATH
                         Path to the config YAML file
-                        Default: /home/user/tnom/config.yml
+                        Default always looks to the current dir: /home/nm/Desktop/tnom/config.yml
   --alert-path ALERT_PATH
                         Path to the alert YAML file
-                        Default: /home/user/tnom/alert.yml
+                        Default always looks to the current dir: /home/nm/Desktop/tnom/alert.yml
   --version             show program's version number and exit
+  --prometheus-host PROMETHEUS_HOST
+                        Prometheus host to run on
+                        Overrides host in alert config file
+                        Default: 127.0.0.1 if not specified in config
+  --prometheus-port PROMETHEUS_PORT
+                        Prometheus port to run on
+                        Overrides port in alert config file
+                        Default: 7130 if not specified in config
 ```
 
-Flag working-dir is optional. It always takes as a default value the 
+Flag `--working-dir` is optional. It always takes as a default value the 
 current directory from where the script is run. For example, if you run it while in 
 /home/user/ that will be considered a working directory. It is recommended to use
 for consistency because it will later generate a database in that directory. You can
 select any directory but it might make sense to place it inside the project root 
 directory.
 
-The config-path is the path to config.yml file. It is optional but as a default, it
-takes as a value /working-dir/config.yml. So you can place it inside of your work dir,
-or if you want to keep it separate you can create a directory just for the config and
-then when running use the argument --config-path /path/to/config.yml.
+The `--config-path` is the path to config.yml file. It is optional but as a default, 
+it takes as a value /working-dir/config.yml. So you can place it inside of your work 
+dir, or if you want to keep it separate you can create a directory just for the config and then when running use the argument --config-path /path/to/config.yml.
 
-The alert-path is the path to alert.yml file. It is optional and it functions 
-identically to the --config-path argument. So you either place it in the working dir or use argument --alert-path /path/to/alert.yml while running the script.
+The `--alert-path` is the path to alert.yml file. It is optional and it functions 
+identically to the `--config-path` argument. So you either place it in the working 
+dir or use argument `--alert-path` /path/to/alert.yml while running the script.
 
 ### Option 1 - Running the script directly
 
@@ -251,10 +288,7 @@ or /usr/local/bin/whichever you prefer.
 
 ## Deployment options
 
-Here you can find some basic setup to deploy it on the server and run it 24/7.
-A word of advice, whatever program you use you need to have a kill signal in place.
-At the moment the script has a problem to stop the script gracefully. Until this is
-fixed use something similar to KillSignal=SIGINT.
+Here you can find some basic setup to deploy it on the server.
 
 ### Systemd
 
@@ -322,7 +356,7 @@ sudo systemctl start tnom.service
 From the Dockerfile create the image.
 
 ```bash
-docker build -t tnom:v0.3.0 .
+docker build -t tnom:v0.5.0 .
 # Create config directories
 mkdir -p ./config
 mkdir -p ./chain_database
@@ -338,5 +372,10 @@ docker run -d \
  -v $(pwd)/config:/app/config \
   -v $(pwd)/chain_database:/app/chain_database \
  --name tnom \
-  tnom:v0.3.0
+  tnom:v0.5.0
 ```
+
+# Prometheus metrics
+
+Prometheus metrics are available at http://localhost:7130/metrics by default.
+Should add soon whole metrics page when some parameters are adjusted.

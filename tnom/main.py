@@ -17,8 +17,8 @@ from set_up_db import init_and_check_db
 ONE_NIBI = 1000000
 ZERO_PT_ONE = 100000
 CONSECUTIVE_MISSES_THRESHOLD = 3
-TOTAL_MISSES_THRESHOLD = 10
-CRITICAL_MISSES_THRESHOLD = 20
+P2_UNSIGNED_EV_THR = 10
+P1_UNSIGNED_EV_THR = 20
 API_CONS_MISS_THRESHOLD = 3
 
 class MonitoringSystem:
@@ -240,7 +240,7 @@ class MonitoringSystem:
             self.alert_sent["consecutive"] = True
 
         # Check total misses
-        if total_misses >= TOTAL_MISSES_THRESHOLD and not self.alert_sent["total"]:
+        if total_misses >= P2_UNSIGNED_EV_THR and not self.alert_sent["total"]:
             alerts_to_send.append({
                 "details": {
                     "total_misses": total_misses,
@@ -253,7 +253,7 @@ class MonitoringSystem:
             self.alert_sent["total"] = True
 
         # Check critical threshold
-        if (total_misses >= CRITICAL_MISSES_THRESHOLD
+        if (total_misses >= P1_UNSIGNED_EV_THR
             and not self.alert_sent["critical"]):
             alerts_to_send.append({
                 "details": {
@@ -382,7 +382,7 @@ class MonitoringSystem:
 def setup_argument_parser() -> argparse.ArgumentParser:
     """Set up and return the argument parser with all arguments configured."""
     parser = argparse.ArgumentParser(
-        description="Monitoring system for price feeds and wallet balances",
+        description="Monitoring tool for tracking Nibiru oracle price feeder.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
 

@@ -39,8 +39,10 @@ class PrometheusMetrics:
         """
         self.db_path = db_path
         self.epoch = epoch
-
-        namespace = "nibiru_oracle"
+        # maybe set better namespace?
+        # TO DO adjust metrics
+        # Keep or discard script/program python data?
+        namespace = "tnom"
 
         self.slash_epoch = Gauge(
             f"{namespace}_slash_epoch",

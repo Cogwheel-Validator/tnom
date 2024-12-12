@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2024-12-11
+
+### Added
+
+- Added prometheus client
+- Added new argument flags for prometheus
+
+### Fixed
+
+- Fixed the issue with task not shutting down gracefully
+
+### Changed
+
+- Small changes to dead man switch  to adjust to work with async tasks
+
+
 ## [0.4.2] - 2024-12-10
 
 ### Fixed

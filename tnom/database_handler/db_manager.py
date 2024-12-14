@@ -288,8 +288,8 @@ def write_epoch_data(path: Path, data: dict[str, int]) -> None:
                 data["small_balance_alert_executed"],
                 data["very_small_balance_alert_executed"],
                 data["consecutive_misses"],
-                data["slash_epoch"],
                 data["api_cons_miss"],
+                data["slash_epoch"],
             ))
         conn.commit()
 

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import hypercorn.asyncio
 import hypercorn.config
-from database_handler import read_current_epoch_data
+from database_handler import read_current_epoch_data, read_last_recorded_epoch
 from fastapi import FastAPI
 from prometheus_client import Counter, Gauge, make_asgi_app
 
@@ -163,6 +163,8 @@ async def start_metrics_server(
     prometheus_host: str,
     prometheus_port: int,
     shutdown_event: asyncio.Event,
+    db_path: Path,
+    update_interval: int = 60,
 ) -> None:
     """Start the Prometheus metrics server.
 
@@ -177,6 +179,9 @@ async def start_metrics_server(
         prometheus_host (str): The hostname to listen on.
         shutdown_event (asyncio.Event): An event to notify when the server
             should shutdown.
+        db_path (Path): The path to the database file.
+        update_interval (int, optional): The interval in seconds to update the
+            metrics. Defaults to 60.
 
     Returns:
         None
@@ -202,7 +207,28 @@ async def start_metrics_server(
         """
         await shutdown_event.wait()
 
+    async def periodic_metric_update() -> None:
+        """Periodically update metrics with the latest epoch."""
+        while not shutdown_event.is_set():
+            try:
+                # Read the latest epoch
+                latest_epoch = read_last_recorded_epoch(db_path)
+
+                # Update the metrics object with the new epoch
+                metrics.epoch = latest_epoch
+
+                # Update the metrics
+                metrics.update_metrics()
+
+                # Wait for the specified interval
+                await asyncio.sleep(update_interval)
+            except (OSError, asyncio.TimeoutError) as e:  # noqa: PERF203
+                logging.exception("Error updating metrics: %s", e)  # noqa: TRY401
+                # Wait a bit before retrying to avoid rapid error loops
+                await asyncio.sleep(10)
+
     try:
+        update_task = asyncio.create_task(periodic_metric_update())
         await hypercorn.asyncio.serve(
             app,
             config,
@@ -213,4 +239,7 @@ async def start_metrics_server(
         # Hypercorn's serve function doesn't automatically clean up
         # Make sure to release resources if necessary here.
     finally:
+        # Cancel the update task
+        update_task.cancel()
         logging.info("Prometheus server shutting down.")
+

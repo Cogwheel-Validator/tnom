@@ -419,7 +419,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="v0.5.0",
+        version="v0.5.1",
     )
 
     parser.add_argument(
@@ -737,6 +737,8 @@ async def main() -> None:
                     prometheus_host,
                     prometheus_port,
                     shutdown_event,
+                    database_path,
+                    config_yml["monitoring_interval"],
                 ),
             )
             tasks.append(prometheus_task)

@@ -372,10 +372,42 @@ docker run -d \
  -v $(pwd)/config:/app/config \
   -v $(pwd)/chain_database:/app/chain_database \
  --name tnom \
-  tnom:v0.5.1
+  tnom:v0.5.2
 ```
 
 # Prometheus metrics
 
 Prometheus metrics are available at http://localhost:7130/metrics by default.
-Should add soon whole metrics page when some parameters are adjusted.
+
+## Script/Program metrics
+
+| Metric | Description |
+| --- | --- |
+| python_gc_objects_collected_total | Tracks the number of objects collected by Python's garbage collector
+Broken down by generation (0, 1, 2) |
+| python_gc_objects_uncollectable_total | Tracks the number of objects that cannot be collected by Python's garbage collector |
+| python_gc_collections_total | Number of times garbage collection was run for each generation |
+| python_info | Information about the Python interpreter |
+| process_virtual_memory_bytes | Total virtual memory used by the process
+Includes all memory allocated, including RAM and swap |
+| process_resident_memory_bytes | Total memory used by the process by actual RAM |
+| process_start_time_seconds | Unix timestamp when the process started |
+| process_cpu_seconds_total | Total user and system CPU time spent in seconds |
+| process_open_fds | Number of open file descriptors |
+| process_max_fds | Maximum number of file descriptors that this process has |
+
+## TNOM metrics
+
+| Metric | Description |
+| --- | --- |
+| tnom_slash_epoch | Current epoch |
+| tnom_api_miss_counter_events | In the events APIs are malfunctioning this parameter will grow. Indicates the number of consecutive API failures. Probably chain is down or APIs are down. |
+| tnom_unsigned_oracle_events | Total number of unsigned oracle events. When the price feeder doesn't sign the transaction this parameter will grow. |
+| tnom_consecutive_misses | Number of consecutive misses of unsigned events. Grows when the price feeder doesn't sign the transaction consecutively |
+| tnom_price_feed_balance | Price feed wallet in unibi balance |
+| tnom_small_balance_alert_executed | Alert executed when the price feed wallet balance is less than 1 NIBI |
+| tnom_very_small_balance_alert_executed | Alert executed when the price feed wallet balance is less than 0.1 NIBI |
+| tnom_miss_counter_events | Total number of miss counter events (* not tested, probably related to the price feeder missing price targets) |
+| tnom_miss_counter_events_p1_executed | P1 alert executed |
+| tnom_miss_counter_events_p2_executed | P2 alert executed |
+| tnom_miss_counter_events_p3_executed | P3 alert executed |

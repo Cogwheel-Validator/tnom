@@ -419,7 +419,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="v0.5.1",
+        version="v0.5.2",
     )
 
     parser.add_argument(

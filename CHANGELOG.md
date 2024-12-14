@@ -5,7 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.2] - 2024-12-14
+
+### Added
+
+- Grafana json with the basic dashboard
+
+### Changed
+
+- Changed some prometheus metrics to gauge, all metrics related to tnom are now gauges
+
+## [0.5.1] - 2024-12-14
+
+### Fixed
+
+- A bug that caused problem updating the database
+- Bug where Prometheus sometimes wouldn't update (also related to the database)
 
 ## [0.5.0] - 2024-12-11
 

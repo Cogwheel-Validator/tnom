@@ -18,7 +18,7 @@ import hypercorn.asyncio
 import hypercorn.config
 from database_handler import read_current_epoch_data, read_last_recorded_epoch
 from fastapi import FastAPI
-from prometheus_client import Counter, Gauge, make_asgi_app
+from prometheus_client import Gauge, make_asgi_app
 
 
 class PrometheusMetrics:
@@ -54,17 +54,17 @@ class PrometheusMetrics:
             "Total number of miss counter events",
         )
 
-        self.miss_counter_events_p1_executed = Counter(
+        self.miss_counter_events_p1_executed = Gauge(
             f"{namespace}_miss_counter_events_p1_executed",
             "P1 alert executed",
         )
 
-        self.miss_counter_events_p2_executed = Counter(
+        self.miss_counter_events_p2_executed = Gauge(
             f"{namespace}_miss_counter_events_p2_executed",
             "P2 alert executed",
         )
 
-        self.miss_counter_events_p3_executed = Counter(
+        self.miss_counter_events_p3_executed = Gauge(
             f"{namespace}_miss_counter_events_p3_executed",
             "P3 alert executed",
         )
@@ -79,12 +79,12 @@ class PrometheusMetrics:
             "Price feed wallet unibi balance",
         )
 
-        self.small_balance_alert = Counter(
+        self.small_balance_alert = Gauge(
             f"{namespace}_small_balance_alert_executed",
             "Small balance alert executed",
         )
 
-        self.very_small_balance_alert = Counter(
+        self.very_small_balance_alert = Gauge(
             f"{namespace}_very_small_balance_alert_executed",
             "Very small balance alert executed",
         )

@@ -737,6 +737,8 @@ async def main() -> None:
                     prometheus_host,
                     prometheus_port,
                     shutdown_event,
+                    database_path,
+                    config_yml["monitoring_interval"],
                 ),
             )
             tasks.append(prometheus_task)

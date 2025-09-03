@@ -10,3 +10,5 @@ tnom.spec
 chain_database
 tnom-exec
 template
+.venv
+.idea

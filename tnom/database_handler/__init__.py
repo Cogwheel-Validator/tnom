@@ -2,6 +2,7 @@
 
 The database_handler package provides functions for interacting with the database.
 """
+
 from .db_manager import (
     check_and_update_database_schema,
     check_database_exists,

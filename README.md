@@ -1,5 +1,9 @@
 # TNOM - The Nibiru Oracle Monitor
 
+**This project is no longer maintained as it is no longer needed.**
+
+---
+
 The Nibiru Oracle Monitor is a monitoring tool for the Nibiru Oracle. It monitors if
 the price feeder signed and wallet balances of the Nibiru Oracle, and alerts if 
 any of these values are out of the expected range. TNOM is written in Python, and the
